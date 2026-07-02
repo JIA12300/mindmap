@@ -1,1687 +1,1499 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>MindMap - 思维导图协作</title>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f8; color: #1a1d2e; }
-    
-    :root {
-      --bg: #f0f2f8;
-      --surface: #fff;
-      --border: #dde1f0;
-      --text: #1a1d2e;
-      --text2: #6b7499;
-      --accent: #6c63ff;
-      --accent-hover: #5a52e0;
-    }
-    
-    .hidden { display: none !important; }
-    
-    /* Auth View */
-    #auth-view {
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .auth-logo { font-size: 48px; margin-bottom: 40px; }
-    .auth-card {
-      background: var(--surface);
-      border-radius: 16px;
-      padding: 40px;
-      width: 100%;
-      max-width: 400px;
-      box-shadow: 0 4px 24px rgba(108,99,255,.08);
-    }
-    .auth-tabs {
-      display: flex;
-      margin-bottom: 30px;
-      border-bottom: 2px solid var(--border);
-    }
-    .auth-tab {
-      flex: 1;
-      padding: 12px;
-      text-align: center;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -2px;
-      transition: all 0.2s;
-      color: var(--text2);
-    }
-    .auth-tab.active {
-      color: var(--accent);
-      border-bottom-color: var(--accent);
-    }
-    .auth-form { display: none; }
-    .auth-form.active { display: block; }
-    .form-group { margin-bottom: 20px; }
-    .form-group label { display: block; margin-bottom: 8px; color: var(--text); font-weight: 500; }
-    .form-group input {
-      width: 100%;
-      padding: 12px;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      font-size: 14px;
-      transition: border-color 0.2s;
-    }
-    .form-group input:focus { outline: none; border-color: var(--accent); }
-    .btn {
-      padding: 12px 24px;
-      border: none;
-      border-radius: 8px;
-      font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .btn-primary {
-      background: var(--accent);
-      color: #fff;
-      width: 100%;
-    }
-    .btn-primary:hover { background: var(--accent-hover); }
-    .btn-secondary {
-      background: var(--border);
-      color: var(--text);
-    }
-    .btn-secondary:hover { background: #c8cde0; }
-    .error-msg { color: #ef5350; font-size: 13px; margin-top: 8px; }
-    
-    /* List View */
-    #list-view { min-height: 100vh; }
-    .topbar {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 16px 32px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .topbar-logo { font-size: 24px; font-weight: 600; }
-    .topbar-user { display: flex; align-items: center; gap: 16px; }
-    .topbar-username { color: var(--text2); }
-    .list-content { padding: 32px; max-width: 1200px; margin: 0 auto; }
-    .list-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 32px;
-    }
-    .list-header h2 { font-size: 28px; }
-    .btn-new {
-      background: var(--accent);
-      color: #fff;
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-size: 15px;
-    }
-    .btn-new:hover { background: var(--accent-hover); }
-    .map-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 20px;
-    }
-    .map-card {
-      background: var(--surface);
-      border-radius: 12px;
-      padding: 20px;
-      cursor: pointer;
-      transition: all 0.2s;
-      border: 1px solid var(--border);
-    }
-    .map-card:hover {
-      box-shadow: 0 4px 16px rgba(108,99,255,.12);
-      transform: translateY(-2px);
-    }
-    .map-card-header {
-      display: flex;
-      align-items: flex-start;
-      justify-content: space-between;
-      margin-bottom: 12px;
-    }
-    .map-card-title { font-size: 18px; font-weight: 600; flex: 1; }
-    .map-card-tag {
-      font-size: 12px;
-      padding: 4px 8px;
-      border-radius: 4px;
-      background: var(--border);
-      color: var(--text2);
-    }
-    .map-card-tag.shared { background: #e3f2fd; color: #1976d2; }
-    .map-card-time { font-size: 13px; color: var(--text2); }
-    .map-card-actions { margin-top: 12px; display: flex; gap: 8px; }
-    .map-card-actions button {
-      padding: 6px 12px;
-      border: 1px solid var(--border);
-      background: var(--surface);
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 13px;
-    }
-    .map-card-actions button:hover { background: var(--bg); }
-    .map-card-actions .btn-delete { color: #ef5350; }
-    
-    /* Editor View */
-    #editor-view { height: 100vh; display: flex; flex-direction: column; }
-    .editor-topbar {
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      padding: 12px 20px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-    }
-    .editor-topbar .btn-back { background: none; border: none; font-size: 20px; cursor: pointer; }
-    .editor-topbar .title-input {
-      flex: 1;
-      border: none;
-      font-size: 18px;
-      font-weight: 600;
-      padding: 8px;
-      border-radius: 6px;
-    }
-    .editor-topbar .title-input:focus { outline: none; background: var(--bg); }
-    .sync-status {
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 13px;
-    }
-    .sync-status.synced { background: #e8f5e9; color: #2e7d32; }
-    .sync-status.syncing { background: #fff3e0; color: #f57c00; }
-    .sync-status.failed { background: #ffebee; color: #c62828; }
-    .editor-content { flex: 1; position: relative; overflow: hidden; }
-    #svg-canvas { width: 100%; height: 100%; cursor: grab; }
-    #svg-canvas.dragging { cursor: grabbing; }
-    
-    /* Right Sidebar */
-    .sidebar {
-      position: absolute;
-      right: 0;
-      top: 0;
-      width: 300px;
-      height: 100%;
-      background: var(--surface);
-      border-left: 1px solid var(--border);
-      padding: 20px;
-      overflow-y: auto;
-      transform: translateX(100%);
-      transition: transform 0.3s;
-    }
-    .sidebar.open { transform: translateX(0); }
-    .sidebar h3 { margin-bottom: 20px; }
-    .sidebar .form-group { margin-bottom: 16px; }
-    .sidebar textarea {
-      width: 100%;
-      padding: 10px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      font-size: 14px;
-      resize: vertical;
-      min-height: 80px;
-    }
-    .color-palette { display: flex; gap: 8px; flex-wrap: wrap; }
-    .color-dot {
-      width: 28px;
-      height: 28px;
-      border-radius: 50%;
-      cursor: pointer;
-      border: 2px solid transparent;
-    }
-    .color-dot.active { border-color: var(--accent); }
-    
-    /* Context Menu */
-    .context-menu {
-      position: absolute;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      box-shadow: 0 4px 16px rgba(0,0,0,.1);
-      padding: 6px;
-      z-index: 1000;
-      min-width: 160px;
-    }
-    .context-menu-item {
-      padding: 8px 12px;
-      cursor: pointer;
-      border-radius: 4px;
-      font-size: 14px;
-    }
-    .context-menu-item:hover { background: var(--bg); }
-    
-    /* Modal */
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0,0,0,.4);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 2000;
-    }
-    .modal {
-      background: var(--surface);
-      border-radius: 12px;
-      padding: 24px;
-      min-width: 400px;
-      max-width: 600px;
-      max-height: 80vh;
-      overflow-y: auto;
-    }
-    .modal h3 { margin-bottom: 20px; }
-    .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; }
-    
-    /* Collaborator List */
-    .collaborator-list { margin-top: 20px; }
-    .collaborator-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-bottom: 8px;
-    }
-    .collaborator-item .remove-btn {
-      background: none;
-      border: none;
-      color: #ef5350;
-      cursor: pointer;
-      font-size: 18px;
-    }
-    .search-result {
-      padding: 10px;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      margin-top: 8px;
-      cursor: pointer;
-    }
-    .search-result:hover { background: var(--bg); }
-    
-    /* Minimap */
-    .minimap {
-      position: absolute;
-      right: 20px;
-      bottom: 20px;
-      width: 140px;
-      height: 90px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      overflow: hidden;
-    }
-    #minimap-svg { width: 100%; height: 100%; }
-    
-    /* Toast */
-    .toast {
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 12px 20px;
-      box-shadow: 0 4px 16px rgba(0,0,0,.1);
-      z-index: 3000;
-      animation: slideIn 0.3s;
-    }
-    @keyframes slideIn {
-      from { transform: translateX(400px); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-    
-    /* Loading */
-    .loading-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(255,255,255,.8);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 4000;
-    }
-    .spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    
-    /* Import Tabs */
-    .import-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
-    .import-tab {
-      padding: 10px 20px;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      margin-bottom: -1px;
-    }
-    .import-tab.active { border-bottom-color: var(--accent); color: var(--accent); }
-    .import-content { display: none; }
-    .import-content.active { display: block; }
-    .file-input-wrapper { position: relative; }
-    .file-input-wrapper input[type="file"] { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🧠 MindMap 思维导图协作</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f8;color:#1a1d2e;height:100vh;overflow:hidden}
+button{cursor:pointer;font-family:inherit}
+input,textarea{font-family:inherit}
+
+/* ===== VIEWS ===== */
+.view{display:none;width:100%;height:100vh}
+.view.active{display:flex;flex-direction:column}
+
+/* ===== AUTH ===== */
+#v-auth{align-items:center;justify-content:center;background:#f0f2f8}
+.auth-box{background:#fff;border-radius:16px;padding:40px;width:400px;box-shadow:0 4px 24px rgba(108,99,255,.1)}
+.auth-logo{font-size:32px;font-weight:700;text-align:center;margin-bottom:28px;color:#1a1d2e}
+.auth-tabs{display:flex;border-bottom:2px solid #dde1f0;margin-bottom:24px}
+.auth-tab{flex:1;padding:10px;text-align:center;cursor:pointer;color:#6b7499;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-2px;transition:.2s}
+.auth-tab.on{color:#6c63ff;border-bottom-color:#6c63ff}
+.auth-panel{display:none}
+.auth-panel.on{display:block}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:13px;color:#6b7499;margin-bottom:6px;font-weight:500}
+.field input{width:100%;padding:10px 12px;border:1.5px solid #dde1f0;border-radius:8px;font-size:14px;transition:.2s;background:#fff;color:#1a1d2e}
+.field input:focus{outline:none;border-color:#6c63ff}
+.err{color:#ef5350;font-size:13px;margin-top:4px;min-height:18px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 18px;border:none;border-radius:8px;font-size:14px;font-weight:500;transition:.15s;white-space:nowrap}
+.btn-primary{background:#6c63ff;color:#fff}
+.btn-primary:hover{background:#5a52e0}
+.btn-secondary{background:#f0f2f8;color:#1a1d2e;border:1px solid #dde1f0}
+.btn-secondary:hover{background:#e4e8f0}
+.btn-danger{background:#ffebee;color:#ef5350;border:1px solid #ffcdd2}
+.btn-danger:hover{background:#ffcdd2}
+.btn-full{width:100%}
+.btn-sm{padding:6px 12px;font-size:13px}
+
+/* ===== LIST ===== */
+#v-list{background:#f0f2f8}
+.topbar{display:flex;align-items:center;gap:12px;padding:0 24px;height:56px;background:#fff;border-bottom:1px solid #dde1f0;flex-shrink:0}
+.topbar-logo{font-size:20px;font-weight:700;margin-right:auto}
+.list-body{flex:1;overflow-y:auto;padding:32px}
+.list-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+.list-head h2{font-size:22px;font-weight:700}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px}
+.card{background:#fff;border-radius:12px;padding:20px;border:1px solid #dde1f0;transition:.2s;cursor:default}
+.card:hover{box-shadow:0 4px 16px rgba(108,99,255,.12);transform:translateY(-2px)}
+.card-top{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:8px}
+.card-title{font-size:16px;font-weight:600;flex:1;word-break:break-all}
+.badge{font-size:11px;padding:3px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0}
+.badge-own{background:#ede9ff;color:#6c63ff}
+.badge-shared{background:#e3f2fd;color:#1976d2}
+.card-time{font-size:12px;color:#6b7499;margin-bottom:12px}
+.card-actions{display:flex;gap:8px}
+
+/* ===== EDITOR ===== */
+#v-editor{background:#f0f2f8}
+.editor-bar{display:flex;align-items:center;gap:10px;padding:0 16px;height:52px;background:#fff;border-bottom:1px solid #dde1f0;flex-shrink:0}
+.editor-title{flex:1;padding:6px 10px;border:1.5px solid transparent;border-radius:8px;font-size:16px;font-weight:600;color:#1a1d2e;background:transparent}
+.editor-title:focus{outline:none;border-color:#6c63ff;background:#fff}
+.sync-dot{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:4px 10px;border-radius:20px}
+.sync-dot.ok{background:#e8f5e9;color:#2e7d32}
+.sync-dot.ing{background:#fff8e1;color:#f57c00}
+.sync-dot.err{background:#ffebee;color:#c62828}
+.editor-body{flex:1;display:flex;overflow:hidden;position:relative}
+#svg-wrap{flex:1;overflow:hidden;position:relative;cursor:grab}
+#svg-wrap.panning{cursor:grabbing}
+#main-svg{width:100%;height:100%;display:block}
+
+/* ===== SIDEBAR ===== */
+#sidebar{width:0;overflow:hidden;transition:width .25s;background:#fff;border-left:1px solid #dde1f0;flex-shrink:0}
+#sidebar.open{width:280px}
+#sidebar-inner{width:280px;padding:20px;overflow-y:auto;height:100%}
+#sidebar h3{font-size:15px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between}
+.sidebar-close{background:none;border:none;font-size:18px;color:#6b7499;cursor:pointer}
+.sidebar-close:hover{color:#1a1d2e}
+.sb-field{margin-bottom:14px}
+.sb-field label{display:block;font-size:12px;color:#6b7499;margin-bottom:6px;font-weight:500}
+.sb-field input[type=text],.sb-field textarea,.sb-field input[type=number]{width:100%;padding:8px 10px;border:1.5px solid #dde1f0;border-radius:6px;font-size:14px;color:#1a1d2e}
+.sb-field textarea{resize:vertical;min-height:72px}
+.sb-field input:focus,.sb-field textarea:focus{outline:none;border-color:#6c63ff}
+.swatches{display:flex;flex-wrap:wrap;gap:7px}
+.swatch{width:26px;height:26px;border-radius:50%;border:2px solid transparent;cursor:pointer;transition:.15s}
+.swatch.sel{border-color:#1a1d2e;transform:scale(1.15)}
+
+/* ===== MINIMAP ===== */
+#minimap{position:absolute;bottom:16px;right:16px;width:140px;height:90px;background:#fff;border:1px solid #dde1f0;border-radius:8px;overflow:hidden;z-index:10;box-shadow:0 2px 8px rgba(0,0,0,.08)}
+#minimap svg{width:100%;height:100%}
+
+/* ===== CTX MENU ===== */
+#ctx-menu{position:fixed;display:none;background:#fff;border:1px solid #dde1f0;border-radius:10px;padding:6px;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,.12);min-width:160px}
+#ctx-menu.show{display:block}
+.ctx-item{padding:8px 12px;border-radius:6px;cursor:pointer;font-size:14px;color:#1a1d2e;display:flex;align-items:center;gap:8px}
+.ctx-item:hover{background:#f0f2f8}
+.ctx-item.danger{color:#ef5350}
+.ctx-sep{height:1px;background:#dde1f0;margin:4px 0}
+
+/* ===== MODAL ===== */
+.modal-bg{position:fixed;inset:0;background:rgba(26,29,46,.4);display:flex;align-items:center;justify-content:center;z-index:8888}
+.modal{background:#fff;border-radius:14px;padding:28px;width:480px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 8px 40px rgba(0,0,0,.15)}
+.modal h3{font-size:18px;font-weight:600;margin-bottom:20px}
+.modal-footer{display:flex;justify-content:flex-end;gap:10px;margin-top:20px}
+
+/* import tabs */
+.itabs{display:flex;border-bottom:2px solid #dde1f0;margin-bottom:20px}
+.itab{padding:8px 16px;cursor:pointer;color:#6b7499;border-bottom:2px solid transparent;margin-bottom:-2px;transition:.2s}
+.itab.on{color:#6c63ff;border-bottom-color:#6c63ff}
+.ipanel{display:none}
+.ipanel.on{display:block}
+
+/* collab search results */
+.collab-result{padding:10px 12px;border:1px solid #dde1f0;border-radius:8px;margin-top:6px;cursor:pointer;display:flex;align-items:center;gap:8px;font-size:14px}
+.collab-result:hover{background:#f0f2f8}
+.collab-list-item{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid #dde1f0;border-radius:8px;margin-bottom:6px;font-size:14px}
+.rm-btn{background:none;border:none;color:#ef5350;font-size:18px;line-height:1;cursor:pointer}
+
+/* ===== TOAST ===== */
+.toast{position:fixed;top:20px;right:20px;background:#1a1d2e;color:#fff;padding:10px 18px;border-radius:10px;font-size:14px;z-index:99999;animation:toastIn .3s ease;pointer-events:none}
+@keyframes toastIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+
+/* ===== SPINNER ===== */
+.spinner-wrap{position:fixed;inset:0;background:rgba(255,255,255,.7);display:flex;align-items:center;justify-content:center;z-index:99990}
+.spinner{width:36px;height:36px;border:3px solid #dde1f0;border-top-color:#6c63ff;border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* resize handle on node */
+.resize-handle{cursor:se-resize;fill:#6b7499;opacity:.7}
+.resize-handle:hover{opacity:1}
+</style>
 </head>
 <body>
-  <!-- Auth View -->
-  <div id="auth-view">
+
+<!-- VIEW: AUTH -->
+<div id="v-auth" class="view">
+  <div class="auth-box">
     <div class="auth-logo">🧠 MindMap</div>
-    <div class="auth-card">
-      <div class="auth-tabs">
-        <div class="auth-tab active" data-tab="login">登录</div>
-        <div class="auth-tab" data-tab="register">注册</div>
-      </div>
-      <form id="login-form" class="auth-form active">
-        <div class="form-group">
-          <label>邮箱</label>
-          <input type="email" id="login-email" required>
-        </div>
-        <div class="form-group">
-          <label>密码</label>
-          <input type="password" id="login-password" required>
-        </div>
-        <div id="login-error" class="error-msg"></div>
-        <button type="submit" class="btn btn-primary">登录</button>
-      </form>
-      <form id="register-form" class="auth-form">
-        <div class="form-group">
-          <label>邮箱</label>
-          <input type="email" id="register-email" required>
-        </div>
-        <div class="form-group">
-          <label>用户名</label>
-          <input type="text" id="register-username" pattern="[a-zA-Z0-9_]{3,20}" required title="3-20位字母数字下划线">
-        </div>
-        <div class="form-group">
-          <label>密码</label>
-          <input type="password" id="register-password" required minlength="6">
-        </div>
-        <div class="form-group">
-          <label>确认密码</label>
-          <input type="password" id="register-password-confirm" required>
-        </div>
-        <div id="register-error" class="error-msg"></div>
-        <button type="submit" class="btn btn-primary">注册</button>
-      </form>
+    <div class="auth-tabs">
+      <div class="auth-tab on" data-p="login">登录</div>
+      <div class="auth-tab" data-p="register">注册</div>
+    </div>
+    <!-- Login -->
+    <div class="auth-panel on" id="p-login">
+      <div class="field"><label>邮箱</label><input id="l-email" type="email" placeholder="your@email.com"></div>
+      <div class="field"><label>密码</label><input id="l-pwd" type="password" placeholder="密码"></div>
+      <div class="err" id="l-err"></div>
+      <button class="btn btn-primary btn-full" style="margin-top:8px" id="do-login">登录</button>
+    </div>
+    <!-- Register -->
+    <div class="auth-panel" id="p-register">
+      <div class="field"><label>邮箱</label><input id="r-email" type="email" placeholder="your@email.com"></div>
+      <div class="field"><label>用户名（3-20位字母数字下划线）</label><input id="r-uname" type="text" placeholder="username" maxlength="20"></div>
+      <div class="field"><label>密码</label><input id="r-pwd" type="password" placeholder="至少6位"></div>
+      <div class="field"><label>确认密码</label><input id="r-pwd2" type="password" placeholder="再次输入密码"></div>
+      <div class="err" id="r-err"></div>
+      <button class="btn btn-primary btn-full" style="margin-top:8px" id="do-register">注册</button>
     </div>
   </div>
+</div>
 
-  <!-- List View -->
-  <div id="list-view" class="hidden">
-    <div class="topbar">
-      <div class="topbar-logo">🧠 MindMap</div>
-      <div class="topbar-user">
-        <span class="topbar-username" id="current-username"></span>
-        <button class="btn btn-secondary" id="logout-btn">退出</button>
-      </div>
-    </div>
-    <div class="list-content">
-      <div class="list-header">
-        <h2>我的导图</h2>
-        <button class="btn btn-new" id="new-map-btn">+ 新建导图</button>
-      </div>
-      <div class="map-grid" id="map-grid"></div>
-    </div>
+<!-- VIEW: LIST -->
+<div id="v-list" class="view">
+  <div class="topbar">
+    <div class="topbar-logo">🧠 MindMap</div>
+    <span id="hdr-username" style="color:#6b7499;font-size:14px"></span>
+    <button class="btn btn-secondary btn-sm" id="do-logout">退出</button>
   </div>
-
-  <!-- Editor View -->
-  <div id="editor-view" class="hidden">
-    <div class="editor-topbar">
-      <button class="btn-back" id="back-btn">←</button>
-      <input type="text" class="title-input" id="title-input" placeholder="导图标题">
-      <button class="btn btn-secondary" id="share-btn">👥 共享</button>
-      <button class="btn btn-secondary" id="import-btn">📥 导入</button>
-      <button class="btn btn-secondary" id="export-svg-btn">⬇ 导出SVG</button>
-      <button class="btn btn-secondary" id="export-json-btn">📦 导出JSON</button>
-      <div class="sync-status synced" id="sync-status">已同步</div>
-      <button class="btn btn-primary" id="save-btn">💾 保存</button>
+  <div class="list-body">
+    <div class="list-head">
+      <h2>我的导图</h2>
+      <button class="btn btn-primary" id="do-new-map">+ 新建导图</button>
     </div>
-    <div class="editor-content">
-      <svg id="svg-canvas"></svg>
-      <div class="sidebar" id="sidebar">
-        <h3>节点编辑</h3>
-        <div class="form-group">
+    <div class="cards" id="cards"></div>
+  </div>
+</div>
+
+<!-- VIEW: EDITOR -->
+<div id="v-editor" class="view">
+  <div class="editor-bar">
+    <button class="btn btn-secondary btn-sm" id="do-back">← 返回</button>
+    <input class="editor-title" id="map-title" type="text" value="未命名导图">
+    <button class="btn btn-secondary btn-sm" id="do-share">👥 共享</button>
+    <button class="btn btn-secondary btn-sm" id="do-import">📥 导入</button>
+    <button class="btn btn-secondary btn-sm" id="do-export-svg">⬇ 导出SVG</button>
+    <button class="btn btn-secondary btn-sm" id="do-export-json">📦 导出JSON</button>
+    <div class="sync-dot ok" id="sync-status">● 已同步</div>
+    <button class="btn btn-primary btn-sm" id="do-save">💾 保存</button>
+  </div>
+  <div class="editor-body">
+    <div id="svg-wrap">
+      <svg id="main-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div id="sidebar">
+      <div id="sidebar-inner">
+        <h3>节点编辑 <button class="sidebar-close" id="close-sidebar">✕</button></h3>
+        <div class="sb-field">
           <label>标签</label>
-          <input type="text" id="node-label">
+          <input type="text" id="sb-label">
         </div>
-        <div class="form-group">
+        <div class="sb-field">
           <label>备注</label>
-          <textarea id="node-note"></textarea>
+          <textarea id="sb-note"></textarea>
         </div>
-        <div class="form-group">
+        <div class="sb-field">
           <label>背景色</label>
-          <div class="color-palette" id="bg-colors"></div>
+          <div class="swatches" id="sb-bg-swatches"></div>
         </div>
-        <div class="form-group">
-          <label>字号</label>
-          <input type="number" id="node-fontsize" min="10" max="32" value="14">
+        <div class="sb-field">
+          <label>字号 (10-32)</label>
+          <input type="number" id="sb-fontsize" min="10" max="32" value="14">
         </div>
-        <div class="form-group">
+        <div class="sb-field">
           <label>字色</label>
-          <div class="color-palette" id="text-colors"></div>
+          <div class="swatches" id="sb-color-swatches"></div>
         </div>
-      </div>
-      <div class="minimap">
-        <svg id="minimap-svg"></svg>
+        <button class="btn btn-primary btn-full" id="sb-apply" style="margin-top:8px">应用</button>
       </div>
     </div>
   </div>
+  <div id="minimap"><svg id="mm-svg" xmlns="http://www.w3.org/2000/svg"></svg></div>
+</div>
 
-  <script>
-    // Supabase
-    const SUPABASE_URL = 'https://tmtlfexxtksgsuqwkiz.supabase.co';
-    const SUPABASE_KEY = 'sb_publishable_EnsF3AyVfnjry9qJUvqZHg_JIPAn7kK';
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+<!-- Context Menu -->
+<div id="ctx-menu">
+  <div class="ctx-item" data-action="add-child">➕ 添加子节点</div>
+  <div class="ctx-item" data-action="add-sibling">↕ 添加同级节点</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" data-action="edit">✏️ 编辑</div>
+  <div class="ctx-item" data-action="toggle-collapse">🔽 折叠/展开</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item" data-action="cut">✂️ 剪切分支</div>
+  <div class="ctx-item" data-action="paste">📋 粘贴为子节点</div>
+  <div class="ctx-sep"></div>
+  <div class="ctx-item danger" data-action="delete">🗑️ 删除</div>
+</div>
 
-    // State
-    let currentUser = null;
-    let currentMapId = null;
-    let tree = null;
-    let selectedNode = null;
-    let clipboard = null;
-    let lastUpdatedAt = null;
-    let syncTimer = null;
-    let bgImage = null;
+<script>
+'use strict';
 
-    const COLORS = ['#6c63ff','#ff6584','#4caf87','#ffb74d','#42a5f5','#ef5350','#ab47bc','#26c6da','#78909c','#f06292'];
-    const TEXT_COLORS = ['#1a1d2e','#ffffff','#6c63ff','#ff6584','#4caf87','#ffb74d','#42a5f5','#ef5350'];
+// ─── Supabase ───────────────────────────────────────────────────────────────
+const SUPABASE_URL = 'https://tmtlfeexxtksgsuqwkiz.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_EnsF3AyVfnjry9qJUvqZHg_JIPAn7kK';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // Utils
-    function generateId() {
-      return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
-    }
+// ─── Colors ─────────────────────────────────────────────────────────────────
+const NODE_COLORS = ['#6c63ff','#ff6584','#4caf87','#ffb74d','#42a5f5','#ef5350','#ab47bc','#26c6da','#78909c','#f06292'];
+const TEXT_COLORS = ['#ffffff','#1a1d2e','#ffb74d','#4caf87','#42a5f5','#ff6584','#ab47bc','#f0f2f8'];
 
-    function showToast(msg) {
-      const toast = document.createElement('div');
-      toast.className = 'toast';
-      toast.textContent = msg;
-      document.body.appendChild(toast);
-      setTimeout(() => toast.remove(), 2500);
-    }
+// ─── State ───────────────────────────────────────────────────────────────────
+let currentUser = null;
+let currentProfile = null;
+let currentMapId = null;
+let currentMapOwnerId = null;
+let tree = null;
+let selectedNodeId = null;
+let clipboard = null;
+let localUpdatedAt = null;
+let pollTimer = null;
+let bgLayer = null; // {url, opacity}
+let panX = 0, panY = 0, scale = 1;
+let isPanning = false, panStartX = 0, panStartY = 0;
+let isDraggingNode = false;
+let dragNodeId = null;
+let dragSnapshots = [];
+let dragStartX = 0, dragStartY = 0;
+let isResizing = false;
+let resizeNodeId = null;
+let resizeStartX = 0, resizeStartY = 0;
+let resizeStartW = 0, resizeStartH = 0;
 
-    function showLoading(show) {
-      let overlay = document.querySelector('.loading-overlay');
-      if (show) {
-        if (!overlay) {
-          overlay = document.createElement('div');
-          overlay.className = 'loading-overlay';
-          overlay.innerHTML = '<div class="spinner"></div>';
-          document.body.appendChild(overlay);
-        }
-      } else {
-        if (overlay) overlay.remove();
-      }
-    }
+// ─── Utils ───────────────────────────────────────────────────────────────────
+function uid() {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+}
 
-    function createNode(text = '新节点') {
-      return {
-        id: generateId(),
-        label: text,
-        note: '',
-        bg: COLORS[Math.floor(Math.random() * COLORS.length)],
-        color: '#ffffff',
-        fontsize: 14,
-        children: [],
-        collapsed: false,
-        x: 0,
-        y: 0,
-        _w: 0,
-        _h: 0
-      };
-    }
+function toast(msg, dur = 2500) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), dur);
+}
 
-    function findNode(node, id) {
-      if (node.id === id) return node;
-      for (let child of node.children) {
-        const found = findNode(child, id);
-        if (found) return found;
-      }
-      return null;
-    }
+function showSpinner() {
+  const w = document.createElement('div');
+  w.className = 'spinner-wrap';
+  w.id = 'global-spinner';
+  w.innerHTML = '<div class="spinner"></div>';
+  document.body.appendChild(w);
+}
+function hideSpinner() {
+  document.getElementById('global-spinner')?.remove();
+}
 
-    function findParent(node, id, parent = null) {
-      if (node.id === id) return parent;
-      for (let child of node.children) {
-        const found = findParent(child, id, node);
-        if (found) return found;
-      }
-      return null;
-    }
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
 
-    function getSubtreeNodes(node) {
-      const nodes = [node];
-      for (let child of node.children) {
-        nodes.push(...getSubtreeNodes(child));
-      }
-      return nodes;
-    }
+function fmtDate(s) {
+  return new Date(s).toLocaleString('zh-CN', {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
 
-    function deepCloneNode(node) {
-      const clone = JSON.parse(JSON.stringify(node));
-      function regenerateIds(n) {
-        n.id = generateId();
-        n.children.forEach(regenerateIds);
-      }
-      regenerateIds(clone);
-      return clone;
-    }
+// ─── Node helpers ─────────────────────────────────────────────────────────────
+function makeNode(label = '新节点', colorIdx) {
+  const ci = colorIdx ?? Math.floor(Math.random() * NODE_COLORS.length);
+  return {
+    id: uid(),
+    label,
+    note: '',
+    bg: NODE_COLORS[ci],
+    color: '#ffffff',
+    fontSize: 14,
+    children: [],
+    collapsed: false,
+    x: 0, y: 0,
+    _w: 0, _h: 0
+  };
+}
 
-    // Layout
-    const SEP_X = 200;
-    const SEP_Y = 20;
+function findNode(root, id) {
+  if (!root) return null;
+  if (root.id === id) return root;
+  for (const c of root.children) {
+    const r = findNode(c, id);
+    if (r) return r;
+  }
+  return null;
+}
 
-    function layoutTree() {
-      if (!tree) return;
-      
-      function measureNode(node) {
-        const tempText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        tempText.textContent = node.label;
-        tempText.setAttribute('font-size', node.fontsize || 14);
-        document.getElementById('svg-canvas').appendChild(tempText);
-        const bbox = tempText.getBBox();
-        tempText.remove();
-        
-        const w = Math.max(80, bbox.width + 32);
-        const h = bbox.height + 20;
-        node._w = w;
-        node._h = h;
-      }
+function findParent(root, id) {
+  if (!root) return null;
+  for (const c of root.children) {
+    if (c.id === id) return root;
+    const r = findParent(c, id);
+    if (r) return r;
+  }
+  return null;
+}
 
-      function layout(node, x, y) {
-        measureNode(node);
-        node.x = x;
-        node.y = y;
-        
-        if (node.collapsed || node.children.length === 0) return;
-        
-        let childY = y;
-        const totalHeight = node.children.reduce((sum, c) => sum + c._h, 0) + (node.children.length - 1) * SEP_Y;
-        childY = y - totalHeight / 2 + node._h / 2;
-        
-        for (let child of node.children) {
-          layout(child, x + SEP_X, childY);
-          childY += child._h + SEP_Y;
-        }
-      }
+function subtreeNodes(node) {
+  const list = [node];
+  for (const c of node.children) list.push(...subtreeNodes(c));
+  return list;
+}
 
-      layout(tree, 0, 0);
+function deepCloneRegen(node) {
+  const n = JSON.parse(JSON.stringify(node));
+  function regen(x) { x.id = uid(); x.children.forEach(regen); }
+  regen(n);
+  return n;
+}
 
-      // Check if re-layout needed
-      function checkHeight(node) {
-        const tempText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        tempText.textContent = node.label;
-        tempText.setAttribute('font-size', node.fontsize || 14);
-        document.getElementById('svg-canvas').appendChild(tempText);
-        const bbox = tempText.getBBox();
-        tempText.remove();
-        
-        const actualH = bbox.height + 20;
-        if (Math.abs(actualH - node._h) > 10) {
-          node._h = actualH;
-          return true;
-        }
-        return node.children.some(checkHeight);
-      }
+// ─── Layout ──────────────────────────────────────────────────────────────────
+const SEP_X = 200;
 
-      if (checkHeight(tree)) {
-        requestAnimationFrame(() => layout(tree, 0, 0));
-      }
-    }
+function measureNode(node) {
+  // Measure via hidden SVG text
+  const svg = document.getElementById('main-svg');
+  const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+  t.setAttribute('font-size', node.fontSize || 14);
+  t.textContent = node.label || ' ';
+  svg.appendChild(t);
+  const bbox = t.getBBox();
+  svg.removeChild(t);
+  const w = Math.max(80, bbox.width + 32);
+  const h = bbox.height + 20;
+  if (!node._w || node._w < 0.1) node._w = w;
+  if (!node._h || node._h < 0.1) node._h = h;
+  return {w, h};
+}
 
-    // Render
-    function render() {
-      if (!tree) return;
-      
-      const svg = document.getElementById('svg-canvas');
-      svg.innerHTML = '';
-      
-      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-      g.id = 'main-group';
-      svg.appendChild(g);
+function layoutTree(node, x, y) {
+  if (!node) return 0;
+  const { w, h } = measureNode(node);
+  // Use stored size if manually resized, else measured
+  const nw = node._manualW ? node._w : w;
+  const nh = node._manualH ? node._h : h;
+  node._w = nw;
+  node._h = nh;
+  node.x = x;
 
-      // Background image
-      if (bgImage) {
-        const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
-        img.setAttribute('href', bgImage.url);
-        img.setAttribute('x', bgImage.x);
-        img.setAttribute('y', bgImage.y);
-        img.setAttribute('width', bgImage.w);
-        img.setAttribute('height', bgImage.h);
-        img.setAttribute('opacity', bgImage.opacity);
-        g.appendChild(img);
-      }
+  if (node.collapsed || node.children.length === 0) {
+    node.y = y;
+    return nh;
+  }
 
-      function renderNode(node, parent) {
-        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-        group.setAttribute('data-id', node.id);
-        group.classList.add('node');
-        
-        // Draw connection line
-        if (parent) {
-          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-          const px = parent.x + parent._w;
-          const py = parent.y + parent._h / 2;
-          const cx = node.x;
-          const cy = node.y + node._h / 2;
-          const mx = (px + cx) / 2;
-          path.setAttribute('d', `M${px},${py} C${mx},${py} ${mx},${cy} ${cx},${cy}`);
-          path.setAttribute('stroke', '#6b7499');
-          path.setAttribute('stroke-width', '2');
-          path.setAttribute('fill', 'none');
-          g.appendChild(path);
-        }
+  const sepY = 20;
+  const childX = x + SEP_X;
+  let totalH = 0;
+  const childHeights = [];
+  for (const c of node.children) {
+    const ch = layoutTree(c, childX, 0); // temp
+    childHeights.push(ch);
+    totalH += ch;
+  }
+  totalH += sepY * (node.children.length - 1);
 
-        // Node rect
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', node.x);
-        rect.setAttribute('y', node.y);
-        rect.setAttribute('width', node._w);
-        rect.setAttribute('height', node._h);
-        rect.setAttribute('rx', '8');
-        rect.setAttribute('fill', node.bg);
-        rect.setAttribute('stroke', selectedNode === node.id ? 'var(--accent)' : 'transparent');
-        rect.setAttribute('stroke-width', '2');
-        group.appendChild(rect);
+  const startY = y - totalH / 2 + nh / 2;
+  let curY = startY;
+  for (let i = 0; i < node.children.length; i++) {
+    layoutTree(node.children[i], childX, curY + childHeights[i] / 2 - node.children[i]._h / 2);
+    // Actually we need to re-layout with correct y
+    node.children[i].x = childX;
+    positionSubtree(node.children[i], curY);
+    curY += childHeights[i] + sepY;
+  }
 
-        // Node text
-        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', node.x + node._w / 2);
-        text.setAttribute('y', node.y + node._h / 2);
-        text.setAttribute('text-anchor', 'middle');
-        text.setAttribute('dominant-baseline', 'middle');
-        text.setAttribute('fill', node.color);
-        text.setAttribute('font-size', node.fontsize);
-        text.textContent = node.label;
-        group.appendChild(text);
+  node.y = y;
+  return Math.max(nh, totalH);
+}
 
-        // Collapse button
-        if (node.children.length > 0) {
-          const btn = document.createElementNS('http://www.w3.org/2000/svg', 'g');
-          btn.setAttribute('transform', `translate(${node.x + node._w + 5}, ${node.y + node._h / 2 - 8})`);
-          btn.style.cursor = 'pointer';
-          
-          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-          circle.setAttribute('r', '8');
-          circle.setAttribute('fill', '#fff');
-          circle.setAttribute('stroke', '#6b7499');
-          btn.appendChild(circle);
-          
-          const symbol = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-          symbol.setAttribute('text-anchor', 'middle');
-          symbol.setAttribute('dominant-baseline', 'middle');
-          symbol.setAttribute('font-size', '12');
-          symbol.textContent = node.collapsed ? '+' : '−';
-          btn.appendChild(symbol);
-          
-          btn.addEventListener('mousedown', (e) => {
-            e.stopPropagation();
-            toggleCollapse(node.id);
-          });
-          group.appendChild(btn);
-        }
+function positionSubtree(node, y) {
+  node.y = y;
+  if (node.collapsed || node.children.length === 0) return;
+  const sepY = 20;
+  let totalH = 0;
+  const childHeights = [];
+  for (const c of node.children) {
+    const ch = calcSubtreeHeight(c);
+    childHeights.push(ch);
+    totalH += ch;
+  }
+  totalH += sepY * (node.children.length - 1);
 
-        // Events
-        group.addEventListener('dblclick', (e) => {
-          e.stopPropagation();
-          selectedNode = node.id;
-          openSidebar(node);
-          render();
-        });
-        
-        group.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          selectedNode = node.id;
-          showContextMenu(e.clientX, e.clientY, node);
-          render();
-        });
-        
-        group.addEventListener('mousedown', (e) => {
-          if (e.button !== 0) return;
-          selectedNode = node.id;
-          startDrag(e, node);
-          render();
-        });
+  const startY = y + node._h / 2 - totalH / 2;
+  let curY = startY;
+  for (let i = 0; i < node.children.length; i++) {
+    const c = node.children[i];
+    c.x = node.x + SEP_X;
+    positionSubtree(c, curY + childHeights[i] / 2 - c._h / 2);
+    curY += childHeights[i] + sepY;
+  }
+}
 
-        g.appendChild(group);
+function calcSubtreeHeight(node) {
+  if (!node._h) measureNode(node);
+  if (node.collapsed || node.children.length === 0) return node._h;
+  const sepY = 20;
+  let total = 0;
+  for (const c of node.children) total += calcSubtreeHeight(c);
+  total += sepY * (node.children.length - 1);
+  return Math.max(node._h, total);
+}
 
-        if (!node.collapsed) {
-          node.children.forEach(child => renderNode(child, node));
-        }
-      }
+function doLayout() {
+  if (!tree) return;
+  // First pass: measure all
+  function measureAll(n) {
+    measureNode(n);
+    n.children.forEach(measureAll);
+  }
+  measureAll(tree);
+  // Layout from root center
+  const totalH = calcSubtreeHeight(tree);
+  positionSubtree(tree, -totalH / 2 + tree._h / 2);
+  tree.x = 0;
+  tree.y = -tree._h / 2;
 
-      renderNode(tree, null);
-      updateMinimap();
-    }
+  // Check if any node's real height differs from estimated by >10px, redo once
+  let needRedo = false;
+  function checkRedo(n) {
+    const { h } = measureNode(n);
+    if (Math.abs(h - n._h) > 10 && !n._manualH) { n._h = h; needRedo = true; }
+    n.children.forEach(checkRedo);
+  }
+  checkRedo(tree);
+  if (needRedo) {
+    requestAnimationFrame(() => {
+      positionSubtree(tree, -calcSubtreeHeight(tree) / 2 + tree._h / 2);
+      render();
+    });
+  }
+}
 
-    function updateMinimap() {
-      const minimapSvg = document.getElementById('minimap-svg');
-      minimapSvg.innerHTML = '';
-      
-      if (!tree) return;
-      
-      const nodes = getSubtreeNodes(tree);
-      if (nodes.length === 0) return;
-      
-      const minX = Math.min(...nodes.map(n => n.x));
-      const maxX = Math.max(...nodes.map(n => n.x + n._w));
-      const minY = Math.min(...nodes.map(n => n.y));
-      const maxY = Math.max(...nodes.map(n => n.y + n._h));
-      
-      const padding = 20;
-      const viewWidth = maxX - minX + padding * 2;
-      const viewHeight = maxY - minY + padding * 2;
-      
-      minimapSvg.setAttribute('viewBox', `${minX - padding} ${minY - padding} ${viewWidth} ${viewHeight}`);
-      
-      nodes.forEach(node => {
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', node.x);
-        rect.setAttribute('y', node.y);
-        rect.setAttribute('width', node._w);
-        rect.setAttribute('height', node._h);
-        rect.setAttribute('fill', node.bg);
-        minimapSvg.appendChild(rect);
+// Auto-collapse nodes with >10 children on first load
+function autoCollapse(node) {
+  if (node.children.length > 10) node.collapsed = true;
+  node.children.forEach(autoCollapse);
+}
+
+// ─── Render ───────────────────────────────────────────────────────────────────
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function el(tag, attrs = {}) {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  return e;
+}
+
+function render() {
+  if (!tree) return;
+  const svg = document.getElementById('main-svg');
+  svg.innerHTML = '';
+
+  // transform group
+  const g = el('g', { id: 'world', transform: `translate(${panX},${panY}) scale(${scale})` });
+  svg.appendChild(g);
+
+  // bg layer
+  if (bgLayer) {
+    const img = el('image', {
+      href: bgLayer.url,
+      x: bgLayer.x ?? -400,
+      y: bgLayer.y ?? -300,
+      width: bgLayer.w ?? 800,
+      height: bgLayer.h ?? 600,
+      opacity: bgLayer.opacity ?? 0.5,
+      preserveAspectRatio: 'xMidYMid meet'
+    });
+    g.appendChild(img);
+  }
+
+  // Edges first (rendered under nodes)
+  const edgeG = el('g', { id: 'edges' });
+  g.appendChild(edgeG);
+  const nodeG = el('g', { id: 'nodes' });
+  g.appendChild(nodeG);
+
+  function renderEdge(parent, child) {
+    const x1 = parent.x + parent._w;
+    const y1 = parent.y + parent._h / 2;
+    const x2 = child.x;
+    const y2 = child.y + child._h / 2;
+    const mx = (x1 + x2) / 2;
+    const path = el('path', {
+      d: `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`,
+      stroke: '#b0b7d4',
+      'stroke-width': '2',
+      fill: 'none'
+    });
+    edgeG.appendChild(path);
+  }
+
+  function renderNode(node, parent) {
+    if (parent) renderEdge(parent, node);
+
+    const g2 = el('g', { 'data-id': node.id, style: 'cursor:pointer' });
+
+    // Background rect
+    const rect = el('rect', {
+      x: node.x, y: node.y,
+      width: node._w, height: node._h,
+      rx: 8, ry: 8,
+      fill: node.bg || '#6c63ff',
+      stroke: selectedNodeId === node.id ? '#1a1d2e' : 'none',
+      'stroke-width': 2
+    });
+    g2.appendChild(rect);
+
+    // Label text
+    const txt = el('text', {
+      x: node.x + node._w / 2,
+      y: node.y + node._h / 2,
+      'text-anchor': 'middle',
+      'dominant-baseline': 'central',
+      fill: node.color || '#ffffff',
+      'font-size': node.fontSize || 14,
+      'pointer-events': 'none'
+    });
+    txt.textContent = node.label;
+    g2.appendChild(txt);
+
+    // Resize handle (bottom-right)
+    const handleSize = 10;
+    const hx = node.x + node._w - handleSize;
+    const hy = node.y + node._h - handleSize;
+    const handle = el('rect', {
+      x: hx, y: hy,
+      width: handleSize, height: handleSize,
+      fill: 'rgba(0,0,0,.3)',
+      rx: 2,
+      class: 'resize-handle',
+      'data-resize': node.id,
+      cursor: 'se-resize'
+    });
+    const handleTxt = el('text', {
+      x: hx + handleSize / 2,
+      y: hy + handleSize / 2,
+      'text-anchor': 'middle',
+      'dominant-baseline': 'central',
+      fill: '#fff',
+      'font-size': 7,
+      'pointer-events': 'none'
+    });
+    handleTxt.textContent = '⤡';
+    g2.appendChild(handle);
+    g2.appendChild(handleTxt);
+
+    // Collapse button (right of node if has children)
+    if (node.children.length > 0) {
+      const btnG = el('g', {
+        transform: `translate(${node.x + node._w + 8},${node.y + node._h / 2 - 8})`,
+        style: 'cursor:pointer',
+        'data-collapse': node.id
       });
-    }
+      const circle = el('circle', { cx: 8, cy: 8, r: 8, fill: '#fff', stroke: '#b0b7d4', 'stroke-width': 1.5 });
+      const cTxt = el('text', {
+        x: 8, y: 8,
+        'text-anchor': 'middle',
+        'dominant-baseline': 'central',
+        'font-size': 11,
+        fill: '#6b7499',
+        'pointer-events': 'none'
+      });
+      cTxt.textContent = node.collapsed ? '+' : '−';
+      btnG.appendChild(circle);
+      btnG.appendChild(cTxt);
+      g2.appendChild(btnG);
 
-    function toggleCollapse(id) {
-      const node = findNode(tree, id);
-      if (node) {
+      btnG.addEventListener('mousedown', e => { e.stopPropagation(); });
+      btnG.addEventListener('click', e => {
+        e.stopPropagation();
         node.collapsed = !node.collapsed;
-        layoutTree();
+        doLayout();
         render();
-      }
-    }
-
-    function openSidebar(node) {
-      const sidebar = document.getElementById('sidebar');
-      sidebar.classList.add('open');
-      
-      document.getElementById('node-label').value = node.label;
-      document.getElementById('node-note').value = node.note || '';
-      document.getElementById('node-fontsize').value = node.fontsize || 14;
-      
-      // Render color palettes
-      const bgColors = document.getElementById('bg-colors');
-      bgColors.innerHTML = '';
-      COLORS.forEach(color => {
-        const dot = document.createElement('div');
-        dot.className = 'color-dot' + (node.bg === color ? ' active' : '');
-        dot.style.background = color;
-        dot.onclick = () => {
-          node.bg = color;
-          render();
-          openSidebar(node);
-        };
-        bgColors.appendChild(dot);
-      });
-      
-      const textColors = document.getElementById('text-colors');
-      textColors.innerHTML = '';
-      TEXT_COLORS.forEach(color => {
-        const dot = document.createElement('div');
-        dot.className = 'color-dot' + (node.color === color ? ' active' : '');
-        dot.style.background = color;
-        dot.onclick = () => {
-          node.color = color;
-          render();
-          openSidebar(node);
-        };
-        textColors.appendChild(dot);
       });
     }
 
-    // Drag
-    let dragState = null;
-    
-    function startDrag(e, node) {
+    // Node events
+    g2.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
       e.stopPropagation();
-      const subtreeNodes = getSubtreeNodes(node);
-      const snapshots = subtreeNodes.map(n => ({ id: n.id, x: n.x, y: n.y }));
-      
-      dragState = {
-        node,
-        startX: e.clientX,
-        startY: e.clientY,
-        snapshots
-      };
-      
-      document.getElementById('svg-canvas').classList.add('dragging');
-    }
-
-    document.addEventListener('mousemove', (e) => {
-      if (!dragState) return;
-      
-      const svg = document.getElementById('svg-canvas');
-      const mainGroup = document.getElementById('main-group');
-      const transform = mainGroup.getAttribute('transform');
-      let scale = 1;
-      if (transform) {
-        const match = transform.match(/scale\(([^)]+)\)/);
-        if (match) scale = parseFloat(match[1]);
-      }
-      
-      const dx = (e.clientX - dragState.startX) / scale;
-      const dy = (e.clientY - dragState.startY) / scale;
-      
-      dragState.snapshots.forEach(snap => {
-        const node = findNode(tree, snap.id);
-        if (node) {
-          node.x = snap.x + dx;
-          node.y = snap.y + dy;
-        }
-      });
-      
+      // Don't start drag on resize handle
+      if (e.target.hasAttribute('data-resize') || e.target.getAttribute('data-collapse') !== null) return;
+      selectedNodeId = node.id;
+      isDraggingNode = true;
+      dragNodeId = node.id;
+      // Snapshot all subtree positions in SVG coordinates
+      const sub = subtreeNodes(node);
+      dragSnapshots = sub.map(n => ({ id: n.id, x: n.x, y: n.y }));
+      const svgPt = screenToWorld(e.clientX, e.clientY);
+      dragStartX = svgPt.x;
+      dragStartY = svgPt.y;
       render();
     });
 
-    document.addEventListener('mouseup', () => {
-      if (dragState) {
-        document.getElementById('svg-canvas').classList.remove('dragging');
-        dragState = null;
-      }
+    g2.addEventListener('dblclick', e => {
+      e.stopPropagation();
+      selectedNodeId = node.id;
+      openSidebar(node);
+      render();
     });
 
-    // Pan & Zoom
-    let panZoom = { x: 0, y: 0, scale: 1 };
-    
-    function applyTransform() {
-      const mainGroup = document.getElementById('main-group');
-      if (mainGroup) {
-        mainGroup.setAttribute('transform', `translate(${panZoom.x}, ${panZoom.y}) scale(${panZoom.scale})`);
-      }
-    }
-
-    document.getElementById('svg-canvas').addEventListener('wheel', (e) => {
+    g2.addEventListener('contextmenu', e => {
       e.preventDefault();
-      
-      if (e.ctrlKey) {
-        // Zoom
-        const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        panZoom.scale *= delta;
-        panZoom.scale = Math.max(0.1, Math.min(3, panZoom.scale));
-      } else {
-        // Pan
-        panZoom.x -= e.deltaX;
-        panZoom.y -= e.deltaY;
-      }
-      
-      applyTransform();
-      updateMinimap();
+      e.stopPropagation();
+      selectedNodeId = node.id;
+      render();
+      showCtxMenu(e.clientX, e.clientY, node);
     });
 
-    let isPanning = false;
-    let panStart = { x: 0, y: 0 };
-    
-    document.getElementById('svg-canvas').addEventListener('mousedown', (e) => {
-      if (e.target.tagName === 'svg') {
-        isPanning = true;
-        panStart = { x: e.clientX, y: e.clientY };
-        document.getElementById('svg-canvas').classList.add('dragging');
-      }
+    // Resize handle events
+    handle.addEventListener('mousedown', e => {
+      e.stopPropagation();
+      isResizing = true;
+      resizeNodeId = node.id;
+      const svgPt = screenToWorld(e.clientX, e.clientY);
+      resizeStartX = svgPt.x;
+      resizeStartY = svgPt.y;
+      resizeStartW = node._w;
+      resizeStartH = node._h;
     });
 
-    document.addEventListener('mousemove', (e) => {
-      if (isPanning) {
-        panZoom.x += e.clientX - panStart.x;
-        panZoom.y += e.clientY - panStart.y;
-        panStart = { x: e.clientX, y: e.clientY };
-        applyTransform();
-        updateMinimap();
-      }
-    });
+    nodeG.appendChild(g2);
 
-    document.addEventListener('mouseup', () => {
-      if (isPanning) {
-        isPanning = false;
-        document.getElementById('svg-canvas').classList.remove('dragging');
-      }
-    });
-
-    function fitView() {
-      if (!tree) return;
-      
-      const nodes = getSubtreeNodes(tree);
-      if (nodes.length === 0) return;
-      
-      const svg = document.getElementById('svg-canvas');
-      const rect = svg.getBoundingClientRect();
-      
-      const minX = Math.min(...nodes.map(n => n.x));
-      const maxX = Math.max(...nodes.map(n => n.x + n._w));
-      const minY = Math.min(...nodes.map(n => n.y));
-      const maxY = Math.max(...nodes.map(n => n.y + n._h));
-      
-      const padding = 100;
-      const viewWidth = maxX - minX + padding * 2;
-      const viewHeight = maxY - minY + padding * 2;
-      
-      const scaleX = rect.width / viewWidth;
-      const scaleY = rect.height / viewHeight;
-      const scale = Math.min(scaleX, scaleY, 1);
-      
-      panZoom.scale = scale;
-      panZoom.x = rect.width / 2 - (minX + (maxX - minX) / 2) * scale;
-      panZoom.y = rect.height / 2 - (minY + (maxY - minY) / 2) * scale;
-      
-      applyTransform();
+    if (!node.collapsed) {
+      for (const child of node.children) renderNode(child, node);
     }
+  }
 
-    // Context Menu
-    let contextMenu = null;
-    
-    function showContextMenu(x, y, node) {
-      hideContextMenu();
-      
-      contextMenu = document.createElement('div');
-      contextMenu.className = 'context-menu';
-      contextMenu.style.left = x + 'px';
-      contextMenu.style.top = y + 'px';
-      
-      const items = [
-        { label: '添加子节点', action: () => addChild(node.id) },
-        { label: '添加同级', action: () => addSibling(node.id) },
-        { label: '编辑', action: () => openSidebar(node) },
-        { label: node.collapsed ? '展开' : '折叠', action: () => toggleCollapse(node.id) },
-        { label: '剪切分支', action: () => cutBranch(node.id) },
-        { label: '粘贴为子节点', action: () => pasteAsChild(node.id) },
-        { label: '删除', action: () => deleteNode(node.id) }
-      ];
-      
-      items.forEach(item => {
-        const div = document.createElement('div');
-        div.className = 'context-menu-item';
-        div.textContent = item.label;
-        div.onclick = () => {
-          item.action();
-          hideContextMenu();
-        };
-        contextMenu.appendChild(div);
-      });
-      
-      document.body.appendChild(contextMenu);
+  renderNode(tree, null);
+  renderMinimap();
+}
+
+// ─── Minimap ─────────────────────────────────────────────────────────────────
+function renderMinimap() {
+  if (!tree) return;
+  const mmSvg = document.getElementById('mm-svg');
+  mmSvg.innerHTML = '';
+  const nodes = subtreeNodes(tree);
+  if (!nodes.length) return;
+
+  const xs = nodes.map(n => n.x);
+  const ys = nodes.map(n => n.y);
+  const x2s = nodes.map(n => n.x + n._w);
+  const y2s = nodes.map(n => n.y + n._h);
+  const minX = Math.min(...xs), maxX = Math.max(...x2s);
+  const minY = Math.min(...ys), maxY = Math.max(...y2s);
+  const pad = 10;
+  mmSvg.setAttribute('viewBox', `${minX - pad} ${minY - pad} ${maxX - minX + pad*2} ${maxY - minY + pad*2}`);
+  mmSvg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+
+  for (const n of nodes) {
+    const r = document.createElementNS(SVG_NS, 'rect');
+    r.setAttribute('x', n.x); r.setAttribute('y', n.y);
+    r.setAttribute('width', n._w); r.setAttribute('height', n._h);
+    r.setAttribute('rx', 4); r.setAttribute('fill', n.bg || '#6c63ff');
+    mmSvg.appendChild(r);
+  }
+}
+
+// ─── Pan/Zoom coords ──────────────────────────────────────────────────────────
+function screenToWorld(sx, sy) {
+  const wrap = document.getElementById('svg-wrap');
+  const rect = wrap.getBoundingClientRect();
+  return { x: (sx - rect.left - panX) / scale, y: (sy - rect.top - panY) / scale };
+}
+
+function fitView() {
+  if (!tree) return;
+  const nodes = subtreeNodes(tree);
+  if (!nodes.length) return;
+  const wrap = document.getElementById('svg-wrap');
+  const wr = wrap.getBoundingClientRect();
+  const xs = nodes.map(n => n.x), ys = nodes.map(n => n.y);
+  const x2s = nodes.map(n => n.x + n._w), y2s = nodes.map(n => n.y + n._h);
+  const minX = Math.min(...xs), maxX = Math.max(...x2s);
+  const minY = Math.min(...ys), maxY = Math.max(...y2s);
+  const pad = 60;
+  const sw = maxX - minX + pad * 2;
+  const sh = maxY - minY + pad * 2;
+  scale = Math.min(wr.width / sw, wr.height / sh, 1.5);
+  panX = wr.width / 2 - (minX + (maxX - minX) / 2) * scale;
+  panY = wr.height / 2 - (minY + (maxY - minY) / 2) * scale;
+  applyTransform();
+}
+
+function applyTransform() {
+  const world = document.getElementById('world');
+  if (world) world.setAttribute('transform', `translate(${panX},${panY}) scale(${scale})`);
+}
+
+// ─── SVG Wrap events ─────────────────────────────────────────────────────────
+const svgWrap = document.getElementById('svg-wrap');
+
+svgWrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.ctrlKey || e.metaKey) {
+    // Zoom
+    const factor = e.deltaY < 0 ? 1.1 : 0.9;
+    const rect = svgWrap.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    panX = mx - factor * (mx - panX);
+    panY = my - factor * (my - panY);
+    scale = Math.min(Math.max(scale * factor, 0.1), 5);
+  } else {
+    panX -= e.deltaX;
+    panY -= e.deltaY;
+  }
+  applyTransform();
+  renderMinimap();
+}, { passive: false });
+
+svgWrap.addEventListener('mousedown', e => {
+  if (e.button === 0 && !isDraggingNode && !isResizing) {
+    if (e.target === svgWrap || e.target.id === 'main-svg' || e.target.id === 'world' || e.target.id === 'edges') {
+      isPanning = true;
+      panStartX = e.clientX; panStartY = e.clientY;
+      svgWrap.classList.add('panning');
     }
+  }
+});
 
-    function hideContextMenu() {
-      if (contextMenu) {
-        contextMenu.remove();
-        contextMenu = null;
-      }
+document.addEventListener('mousemove', e => {
+  if (isPanning) {
+    panX += e.clientX - panStartX;
+    panY += e.clientY - panStartY;
+    panStartX = e.clientX; panStartY = e.clientY;
+    applyTransform();
+    renderMinimap();
+  }
+  if (isDraggingNode && dragNodeId) {
+    const svgPt = screenToWorld(e.clientX, e.clientY);
+    const dx = svgPt.x - dragStartX;
+    const dy = svgPt.y - dragStartY;
+    for (const snap of dragSnapshots) {
+      const n = findNode(tree, snap.id);
+      if (n) { n.x = snap.x + dx; n.y = snap.y + dy; }
     }
-
-    document.addEventListener('click', hideContextMenu);
-
-    // Node Operations
-    function addChild(parentId) {
-      const parent = findNode(tree, parentId);
-      if (parent) {
-        const newNode = createNode('新节点');
-        parent.children.push(newNode);
-        parent.collapsed = false;
-        layoutTree();
-        render();
-      }
+    render();
+  }
+  if (isResizing && resizeNodeId) {
+    const svgPt = screenToWorld(e.clientX, e.clientY);
+    const n = findNode(tree, resizeNodeId);
+    if (n) {
+      n._w = Math.max(60, resizeStartW + (svgPt.x - resizeStartX));
+      n._h = Math.max(24, resizeStartH + (svgPt.y - resizeStartY));
+      n._manualW = true; n._manualH = true;
+      render();
     }
+  }
+});
 
-    function addSibling(nodeId) {
-      const parent = findParent(tree, nodeId);
-      if (parent) {
-        const newNode = createNode('新节点');
-        const idx = parent.children.findIndex(c => c.id === nodeId);
-        parent.children.splice(idx + 1, 0, newNode);
-        layoutTree();
-        render();
-      }
-    }
+document.addEventListener('mouseup', () => {
+  isPanning = false;
+  svgWrap.classList.remove('panning');
+  isDraggingNode = false;
+  dragNodeId = null;
+  isResizing = false;
+  resizeNodeId = null;
+});
 
-    function deleteNode(nodeId) {
-      if (nodeId === tree.id) return;
-      const parent = findParent(tree, nodeId);
-      if (parent) {
-        parent.children = parent.children.filter(c => c.id !== nodeId);
-        layoutTree();
-        render();
-      }
-    }
+svgWrap.addEventListener('click', e => {
+  if (e.target === svgWrap || e.target.id === 'main-svg' || e.target.id === 'world') {
+    selectedNodeId = null;
+    closeSidebar();
+    render();
+  }
+  hideCtxMenu();
+});
 
-    function cutBranch(nodeId) {
-      if (nodeId === tree.id) return;
-      const node = findNode(tree, nodeId);
-      if (node) {
-        clipboard = deepCloneNode(node);
-        deleteNode(nodeId);
-      }
-    }
+// ─── Context Menu ─────────────────────────────────────────────────────────────
+const ctxMenu = document.getElementById('ctx-menu');
+let ctxNode = null;
 
-    function pasteAsChild(parentId) {
-      if (!clipboard) return;
-      const parent = findNode(tree, parentId);
-      if (parent) {
-        const newNode = deepCloneNode(clipboard);
-        parent.children.push(newNode);
-        parent.collapsed = false;
-        layoutTree();
-        render();
-      }
-    }
+function showCtxMenu(x, y, node) {
+  ctxNode = node;
+  ctxMenu.style.left = x + 'px';
+  ctxMenu.style.top = y + 'px';
+  ctxMenu.classList.add('show');
+}
+function hideCtxMenu() {
+  ctxMenu.classList.remove('show');
+  ctxNode = null;
+}
 
-    // Keyboard Shortcuts
-    document.addEventListener('keydown', (e) => {
-      if (!currentMapId || !selectedNode) return;
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-      
-      const node = findNode(tree, selectedNode);
-      if (!node) return;
-      
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        addChild(node.id);
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        addSibling(node.id);
-      } else if (e.key === 'Delete') {
-        e.preventDefault();
-        deleteNode(node.id);
-      } else if (e.key === 'F2') {
-        e.preventDefault();
-        openSidebar(node);
-      } else if (e.key === ' ') {
-        e.preventDefault();
-        centerNode(node);
-      } else if (e.ctrlKey && e.key === 'x') {
-        e.preventDefault();
-        cutBranch(node.id);
-      } else if (e.ctrlKey && e.key === 'v') {
-        e.preventDefault();
-        pasteAsChild(node.id);
-      } else if (e.key === 'Escape') {
-        document.getElementById('sidebar').classList.remove('open');
-      }
-    });
+document.addEventListener('click', e => {
+  if (!ctxMenu.contains(e.target)) hideCtxMenu();
+});
+document.addEventListener('contextmenu', e => {
+  if (!ctxMenu.contains(e.target) && !e.target.closest('[data-id]')) hideCtxMenu();
+});
 
-    function centerNode(node) {
-      const svg = document.getElementById('svg-canvas');
-      const rect = svg.getBoundingClientRect();
-      
-      panZoom.x = rect.width / 2 - (node.x + node._w / 2) * panZoom.scale;
-      panZoom.y = rect.height / 2 - (node.y + node._h / 2) * panZoom.scale;
-      
-      applyTransform();
-    }
+ctxMenu.addEventListener('click', e => {
+  const item = e.target.closest('[data-action]');
+  if (!item || !ctxNode) return;
+  const action = item.dataset.action;
+  const node = ctxNode;
+  hideCtxMenu();
 
-    // Sidebar Events
-    document.getElementById('node-label').addEventListener('input', (e) => {
-      if (!selectedNode) return;
-      const node = findNode(tree, selectedNode);
-      if (node) {
-        node.label = e.target.value;
-        layoutTree();
-        render();
-      }
-    });
+  if (action === 'add-child') {
+    const ch = makeNode('子节点');
+    node.children.push(ch);
+    node.collapsed = false;
+    doLayout(); render();
+  } else if (action === 'add-sibling') {
+    const parent = findParent(tree, node.id);
+    if (!parent) { toast('根节点无法添加同级'); return; }
+    const idx = parent.children.findIndex(c => c.id === node.id);
+    const sib = makeNode('同级节点');
+    parent.children.splice(idx + 1, 0, sib);
+    doLayout(); render();
+  } else if (action === 'edit') {
+    selectedNodeId = node.id;
+    openSidebar(node); render();
+  } else if (action === 'toggle-collapse') {
+    node.collapsed = !node.collapsed;
+    doLayout(); render();
+  } else if (action === 'cut') {
+    if (node.id === tree.id) { toast('不能剪切根节点'); return; }
+    clipboard = deepCloneRegen(node);
+    const parent = findParent(tree, node.id);
+    if (parent) { parent.children = parent.children.filter(c => c.id !== node.id); }
+    if (selectedNodeId === node.id) selectedNodeId = null;
+    doLayout(); render();
+    toast('已剪切');
+  } else if (action === 'paste') {
+    if (!clipboard) { toast('剪贴板为空'); return; }
+    node.children.push(deepCloneRegen(clipboard));
+    node.collapsed = false;
+    doLayout(); render();
+  } else if (action === 'delete') {
+    if (node.id === tree.id) { toast('不能删除根节点'); return; }
+    const parent = findParent(tree, node.id);
+    if (parent) { parent.children = parent.children.filter(c => c.id !== node.id); }
+    if (selectedNodeId === node.id) { selectedNodeId = null; closeSidebar(); }
+    doLayout(); render();
+  }
+});
 
-    document.getElementById('node-note').addEventListener('input', (e) => {
-      if (!selectedNode) return;
-      const node = findNode(tree, selectedNode);
-      if (node) {
-        node.note = e.target.value;
-      }
-    });
+// ─── Keyboard ────────────────────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+  if (!selectedNodeId || !tree) return;
+  const node = findNode(tree, selectedNodeId);
+  if (!node) return;
 
-    document.getElementById('node-fontsize').addEventListener('input', (e) => {
-      if (!selectedNode) return;
-      const node = findNode(tree, selectedNode);
-      if (node) {
-        node.fontsize = parseInt(e.target.value) || 14;
-        layoutTree();
-        render();
-      }
-    });
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const ch = makeNode('子节点');
+    node.children.push(ch); node.collapsed = false;
+    doLayout(); render();
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    const parent = findParent(tree, node.id);
+    if (!parent) { toast('根节点无法添加同级'); return; }
+    const sib = makeNode('同级节点');
+    const idx = parent.children.findIndex(c => c.id === node.id);
+    parent.children.splice(idx + 1, 0, sib);
+    doLayout(); render();
+  } else if (e.key === 'Delete' || e.key === 'Backspace') {
+    e.preventDefault();
+    if (node.id === tree.id) { toast('不能删除根节点'); return; }
+    const parent = findParent(tree, node.id);
+    if (parent) parent.children = parent.children.filter(c => c.id !== node.id);
+    selectedNodeId = null; closeSidebar();
+    doLayout(); render();
+  } else if (e.key === 'F2') {
+    e.preventDefault();
+    openSidebar(node);
+  } else if (e.key === ' ') {
+    e.preventDefault();
+    // Center on selected
+    const wrap = document.getElementById('svg-wrap');
+    const wr = wrap.getBoundingClientRect();
+    panX = wr.width / 2 - (node.x + node._w / 2) * scale;
+    panY = wr.height / 2 - (node.y + node._h / 2) * scale;
+    applyTransform();
+  } else if ((e.ctrlKey || e.metaKey) && e.key === 'x') {
+    e.preventDefault();
+    if (node.id === tree.id) { toast('不能剪切根节点'); return; }
+    clipboard = deepCloneRegen(node);
+    const parent = findParent(tree, node.id);
+    if (parent) parent.children = parent.children.filter(c => c.id !== node.id);
+    selectedNodeId = null; closeSidebar();
+    doLayout(); render(); toast('已剪切');
+  } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+    e.preventDefault();
+    if (!clipboard) { toast('剪贴板为空'); return; }
+    node.children.push(deepCloneRegen(clipboard));
+    node.collapsed = false;
+    doLayout(); render();
+  } else if (e.key === 'Escape') {
+    closeSidebar();
+    hideCtxMenu();
+  }
+});
 
-    // Auth
-    document.querySelectorAll('.auth-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
-        tab.classList.add('active');
-        document.getElementById(tab.dataset.tab + '-form').classList.add('active');
-      });
-    });
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+function openSidebar(node) {
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sb-label').value = node.label;
+  document.getElementById('sb-note').value = node.note || '';
+  document.getElementById('sb-fontsize').value = node.fontSize || 14;
 
-    document.getElementById('login-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = document.getElementById('login-email').value;
-      const password = document.getElementById('login-password').value;
-      const errorDiv = document.getElementById('login-error');
-      errorDiv.textContent = '';
-      
-      showLoading(true);
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      showLoading(false);
-      
-      if (error) {
-        errorDiv.textContent = error.message;
-        return;
-      }
-      
-      currentUser = data.user;
-      await loadUserProfile();
-      showListView();
-    });
-
-    document.getElementById('register-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = document.getElementById('register-email').value;
-      const username = document.getElementById('register-username').value;
-      const password = document.getElementById('register-password').value;
-      const passwordConfirm = document.getElementById('register-password-confirm').value;
-      const errorDiv = document.getElementById('register-error');
-      errorDiv.textContent = '';
-      
-      if (password !== passwordConfirm) {
-        errorDiv.textContent = '两次密码输入不一致';
-        return;
-      }
-      
-      showLoading(true);
-      const { data, error } = await supabase.auth.signUp({ email, password });
-      
-      if (error) {
-        showLoading(false);
-        errorDiv.textContent = error.message;
-        return;
-      }
-      
-      const { error: profileError } = await supabase.from('profiles').insert({
-        id: data.user.id,
-        username: username
-      });
-      
-      showLoading(false);
-      
-      if (profileError) {
-        if (profileError.code === '23505') {
-          errorDiv.textContent = '该用户名已被使用';
-          await supabase.auth.signOut();
-        } else {
-          errorDiv.textContent = profileError.message;
-        }
-        return;
-      }
-      
-      currentUser = data.user;
-      await loadUserProfile();
-      showListView();
-    });
-
-    async function loadUserProfile() {
-      const { data } = await supabase.from('profiles').select('username').eq('id', currentUser.id).single();
-      if (data) {
-        document.getElementById('current-username').textContent = data.username;
-      }
-    }
-
-    supabase.auth.onAuthStateChange((event, session) => {
-      if (!session) {
-        currentUser = null;
-        showAuthView();
-      }
-    });
-
-    // Views
-    function showAuthView() {
-      document.getElementById('auth-view').classList.remove('hidden');
-      document.getElementById('list-view').classList.add('hidden');
-      document.getElementById('editor-view').classList.add('hidden');
-    }
-
-    function showListView() {
-      document.getElementById('auth-view').classList.add('hidden');
-      document.getElementById('list-view').classList.remove('hidden');
-      document.getElementById('editor-view').classList.add('hidden');
-      loadMapList();
-    }
-
-    function showEditorView() {
-      document.getElementById('auth-view').classList.add('hidden');
-      document.getElementById('list-view').classList.add('hidden');
-      document.getElementById('editor-view').classList.remove('hidden');
-    }
-
-    // List View
-    async function loadMapList() {
-      const grid = document.getElementById('map-grid');
-      grid.innerHTML = '';
-      
-      // Load owned maps
-      const { data: owned } = await supabase
-        .from('mindmaps')
-        .select('*')
-        .eq('owner_id', currentUser.id)
-        .order('created_at', { ascending: false });
-      
-      // Load shared maps
-      const { data: collabs } = await supabase
-        .from('collaborators')
-        .select('mindmap_id')
-        .eq('user_id', currentUser.id);
-      
-      let shared = [];
-      if (collabs && collabs.length > 0) {
-        const ids = collabs.map(c => c.mindmap_id);
-        const { data } = await supabase
-          .from('mindmaps')
-          .select('*')
-          .in('id', ids)
-          .order('created_at', { ascending: false });
-        shared = data || [];
-      }
-      
-      owned.forEach(map => {
-        grid.appendChild(createMapCard(map, true));
-      });
-      
-      shared.forEach(map => {
-        grid.appendChild(createMapCard(map, false));
-      });
-    }
-
-    function createMapCard(map, isOwner) {
-      const card = document.createElement('div');
-      card.className = 'map-card';
-      
-      const createdDate = new Date(map.created_at).toLocaleString('zh-CN');
-      
-      card.innerHTML = `
-        <div class="map-card-header">
-          <div class="map-card-title">${map.title}</div>
-          <div class="map-card-tag ${isOwner ? '' : 'shared'}">${isOwner ? '我创建的' : '共享给我的'}</div>
-        </div>
-        <div class="map-card-time">${createdDate}</div>
-        <div class="map-card-actions">
-          <button class="btn-edit">进入编辑</button>
-          ${isOwner ? '<button class="btn-delete">删除</button>' : ''}
-        </div>
-      `;
-      
-      card.querySelector('.btn-edit').onclick = () => openMap(map.id);
-      if (isOwner) {
-        card.querySelector('.btn-delete').onclick = async (e) => {
-          e.stopPropagation();
-          if (confirm('确定删除这个导图吗？')) {
-            await supabase.from('mindmaps').delete().eq('id', map.id);
-            loadMapList();
-          }
-        };
-      }
-      
-      return card;
-    }
-
-    document.getElementById('new-map-btn').onclick = async () => {
-      const title = prompt('请输入导图标题', '未命名导图');
-      if (!title) return;
-      
-      const newTree = createNode('中心主题');
-      const { data } = await supabase.from('mindmaps').insert({
-        owner_id: currentUser.id,
-        title: title,
-        tree: JSON.stringify(newTree)
-      }).select().single();
-      
-      if (data) {
-        openMap(data.id);
-      }
+  // BG swatches
+  const bgSw = document.getElementById('sb-bg-swatches');
+  bgSw.innerHTML = '';
+  NODE_COLORS.forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'swatch' + (node.bg === c ? ' sel' : '');
+    d.style.background = c;
+    d.onclick = () => {
+      node.bg = c;
+      document.querySelectorAll('#sb-bg-swatches .swatch').forEach(s => s.classList.remove('sel'));
+      d.classList.add('sel');
+      render();
     };
+    bgSw.appendChild(d);
+  });
 
-    document.getElementById('logout-btn').onclick = async () => {
-      await supabase.auth.signOut();
-      showAuthView();
+  // Text swatches
+  const txSw = document.getElementById('sb-color-swatches');
+  txSw.innerHTML = '';
+  TEXT_COLORS.forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'swatch' + (node.color === c ? ' sel' : '');
+    d.style.background = c;
+    if (c === '#fff' || c === '#ffffff' || c === '#f0f2f8') d.style.border = '2px solid #dde1f0';
+    d.onclick = () => {
+      node.color = c;
+      document.querySelectorAll('#sb-color-swatches .swatch').forEach(s => s.classList.remove('sel'));
+      d.classList.add('sel');
+      render();
     };
+    txSw.appendChild(d);
+  });
 
-    // Editor View
-    async function openMap(id) {
-      currentMapId = id;
-      showEditorView();
+  document.getElementById('sb-apply').onclick = () => {
+    node.label = document.getElementById('sb-label').value || '节点';
+    node.note = document.getElementById('sb-note').value;
+    node.fontSize = parseInt(document.getElementById('sb-fontsize').value) || 14;
+    doLayout(); render();
+  };
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+}
+document.getElementById('close-sidebar').onclick = closeSidebar;
+
+// ─── Supabase: Data ───────────────────────────────────────────────────────────
+function setSyncStatus(s) {
+  const el = document.getElementById('sync-status');
+  el.className = 'sync-dot';
+  if (s === 'ok') { el.classList.add('ok'); el.textContent = '● 已同步'; }
+  else if (s === 'ing') { el.classList.add('ing'); el.textContent = '● 同步中…'; }
+  else { el.classList.add('err'); el.textContent = '● 同步失败'; }
+}
+
+async function loadData() {
+  const { data, error } = await sb.from('mindmaps').select('*').eq('id', currentMapId).single();
+  if (error || !data) return;
+  tree = typeof data.tree === 'string' ? JSON.parse(data.tree) : data.tree;
+  document.getElementById('map-title').value = data.title || '未命名';
+  localUpdatedAt = data.updated_at;
+}
+
+async function saveData() {
+  if (!currentMapId || !tree) return;
+  setSyncStatus('ing');
+  const title = document.getElementById('map-title').value;
+  const now = new Date().toISOString();
+  const { error } = await sb.from('mindmaps').update({
+    tree: JSON.stringify(tree),
+    title,
+    updated_at: now
+  }).eq('id', currentMapId);
+  if (error) { setSyncStatus('err'); toast('保存失败: ' + error.message); }
+  else { setSyncStatus('ok'); localUpdatedAt = now; }
+}
+
+function startPoll() {
+  stopPoll();
+  pollTimer = setInterval(async () => {
+    if (!currentMapId) return;
+    const { data } = await sb.from('mindmaps').select('updated_at').eq('id', currentMapId).single();
+    if (data && data.updated_at && data.updated_at !== localUpdatedAt) {
       await loadData();
-      layoutTree();
-      render();
-      fitView();
-      startSyncPolling();
+      doLayout(); render();
+      toast('已同步他人更新 🔄');
     }
+  }, 10000);
+}
+function stopPoll() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
 
-    async function loadData() {
-      const { data } = await supabase.from('mindmaps').select('*').eq('id', currentMapId).single();
-      if (data) {
-        tree = JSON.parse(data.tree);
-        document.getElementById('title-input').value = data.title;
-        lastUpdatedAt = data.updated_at;
+// ─── Auth ────────────────────────────────────────────────────────────────────
+sb.auth.onAuthStateChange((event, session) => {
+  if (!session) {
+    currentUser = null;
+    currentProfile = null;
+    stopPoll();
+    showView('v-auth');
+  }
+});
+
+document.getElementById('do-login').onclick = async () => {
+  const email = document.getElementById('l-email').value.trim();
+  const pwd = document.getElementById('l-pwd').value;
+  const errEl = document.getElementById('l-err');
+  errEl.textContent = '';
+  if (!email || !pwd) { errEl.textContent = '请填写邮箱和密码'; return; }
+  showSpinner();
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: pwd });
+  hideSpinner();
+  if (error) { errEl.textContent = error.message; return; }
+  currentUser = data.user;
+  await loadProfile();
+  showView('v-list');
+  loadMapList();
+};
+
+document.getElementById('do-register').onclick = async () => {
+  const email = document.getElementById('r-email').value.trim();
+  const uname = document.getElementById('r-uname').value.trim();
+  const pwd = document.getElementById('r-pwd').value;
+  const pwd2 = document.getElementById('r-pwd2').value;
+  const errEl = document.getElementById('r-err');
+  errEl.textContent = '';
+
+  if (!email || !uname || !pwd || !pwd2) { errEl.textContent = '请填写所有字段'; return; }
+  if (!/^[a-zA-Z0-9_]{3,20}$/.test(uname)) { errEl.textContent = '用户名需3-20位字母数字下划线'; return; }
+  if (pwd !== pwd2) { errEl.textContent = '两次密码不一致'; return; }
+  if (pwd.length < 6) { errEl.textContent = '密码至少6位'; return; }
+
+  showSpinner();
+  const { data, error } = await sb.auth.signUp({ email, password: pwd });
+  if (error) { hideSpinner(); errEl.textContent = error.message; return; }
+
+  // Insert profile
+  const { error: pe } = await sb.from('profiles').insert({ id: data.user.id, username: uname });
+  hideSpinner();
+  if (pe) {
+    // duplicate username?
+    if (pe.code === '23505') errEl.textContent = '该用户名已被使用';
+    else errEl.textContent = pe.message;
+    await sb.auth.signOut();
+    return;
+  }
+  currentUser = data.user;
+  await loadProfile();
+  showView('v-list');
+  loadMapList();
+};
+
+async function loadProfile() {
+  if (!currentUser) return;
+  const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  currentProfile = data;
+  if (data) document.getElementById('hdr-username').textContent = data.username;
+}
+
+// Auth tab toggle
+document.querySelectorAll('.auth-tab').forEach(tab => {
+  tab.onclick = () => {
+    document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('on'));
+    document.querySelectorAll('.auth-panel').forEach(p => p.classList.remove('on'));
+    tab.classList.add('on');
+    document.getElementById('p-' + tab.dataset.p).classList.add('on');
+  };
+});
+
+// ─── List View ────────────────────────────────────────────────────────────────
+document.getElementById('do-logout').onclick = async () => {
+  await sb.auth.signOut();
+};
+
+document.getElementById('do-new-map').onclick = async () => {
+  const title = prompt('请输入导图标题：', '未命名导图');
+  if (!title) return;
+  showSpinner();
+  const root = makeNode('中心主题', 0);
+  root._w = 120; root._h = 40;
+  const { data, error } = await sb.from('mindmaps').insert({
+    owner_id: currentUser.id,
+    title,
+    tree: JSON.stringify(root)
+  }).select().single();
+  hideSpinner();
+  if (error) { toast('创建失败: ' + error.message); return; }
+  enterEditor(data.id, data.owner_id);
+};
+
+async function loadMapList() {
+  const grid = document.getElementById('cards');
+  grid.innerHTML = '<div style="color:#6b7499;font-size:14px">加载中…</div>';
+  
+  // Own maps
+  const { data: ownMaps } = await sb.from('mindmaps')
+    .select('*').eq('owner_id', currentUser.id).order('created_at', { ascending: false });
+
+  // Shared maps via collaborators
+  const { data: collabs } = await sb.from('collaborators')
+    .select('mindmap_id').eq('user_id', currentUser.id);
+
+  let sharedMaps = [];
+  if (collabs && collabs.length > 0) {
+    const ids = collabs.map(c => c.mindmap_id);
+    const { data: sm } = await sb.from('mindmaps').select('*').in('id', ids).order('created_at', { ascending: false });
+    sharedMaps = sm || [];
+  }
+
+  grid.innerHTML = '';
+  const all = [
+    ...(ownMaps || []).map(m => ({ ...m, isOwn: true })),
+    ...sharedMaps.map(m => ({ ...m, isOwn: false }))
+  ];
+
+  if (!all.length) {
+    grid.innerHTML = '<div style="color:#6b7499;font-size:14px">暂无导图，点击「+ 新建导图」创建第一个</div>';
+    return;
+  }
+
+  for (const map of all) {
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.innerHTML = `
+      <div class="card-top">
+        <div class="card-title">${escHtml(map.title)}</div>
+        <span class="badge ${map.isOwn ? 'badge-own' : 'badge-shared'}">${map.isOwn ? '我创建的' : '共享给我'}</span>
+      </div>
+      <div class="card-time">${fmtDate(map.created_at)}</div>
+      <div class="card-actions">
+        <button class="btn btn-primary btn-sm" data-enter="${map.id}">进入编辑</button>
+        ${map.isOwn ? `<button class="btn btn-danger btn-sm" data-del="${map.id}">删除</button>` : ''}
+      </div>
+    `;
+    card.querySelector('[data-enter]').onclick = () => enterEditor(map.id, map.owner_id);
+    const delBtn = card.querySelector('[data-del]');
+    if (delBtn) delBtn.onclick = async () => {
+      if (!confirm(`确定删除「${map.title}」？此操作不可恢复。`)) return;
+      showSpinner();
+      await sb.from('mindmaps').delete().eq('id', map.id);
+      hideSpinner();
+      toast('已删除');
+      loadMapList();
+    };
+    grid.appendChild(card);
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ─── Editor ────────────────────────────────────────────────────────────────────
+async function enterEditor(mapId, ownerId) {
+  currentMapId = mapId;
+  currentMapOwnerId = ownerId;
+  bgLayer = null;
+  selectedNodeId = null;
+  clipboard = null;
+  panX = 0; panY = 0; scale = 1;
+  showView('v-editor');
+  showSpinner();
+  await loadData();
+  hideSpinner();
+  if (!tree) { toast('加载失败'); return; }
+  autoCollapse(tree);
+  doLayout();
+  render();
+  fitView();
+  startPoll();
+  setSyncStatus('ok');
+}
+
+document.getElementById('do-back').onclick = async () => {
+  await saveData();
+  stopPoll();
+  currentMapId = null;
+  tree = null;
+  selectedNodeId = null;
+  showView('v-list');
+  loadMapList();
+};
+
+document.getElementById('map-title').addEventListener('change', () => saveData());
+document.getElementById('do-save').onclick = () => saveData();
+
+// ─── Share Modal ──────────────────────────────────────────────────────────────
+document.getElementById('do-share').onclick = () => showShareModal();
+
+async function showShareModal() {
+  const isOwner = currentUser && currentMapOwnerId === currentUser.id;
+  const modal = createModal('👥 共享设置');
+  const body = modal.querySelector('.modal-body');
+
+  if (isOwner) {
+    body.innerHTML = `
+      <div class="field">
+        <label>搜索用户名邀请协作者</label>
+        <input type="text" id="sh-search" placeholder="输入用户名">
+      </div>
+      <div id="sh-results"></div>
+      <div style="margin-top:16px;font-weight:600;font-size:14px;margin-bottom:8px">当前协作者</div>
+      <div id="sh-collabs"></div>
+    `;
+    loadCollabList();
+
+    let searchTimer;
+    document.getElementById('sh-search').oninput = (e) => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => searchUsers(e.target.value), 300);
+    };
+  } else {
+    body.innerHTML = '<div style="color:#6b7499;font-size:14px">只有导图创建者可管理共享</div>';
+  }
+}
+
+async function searchUsers(q) {
+  const res = document.getElementById('sh-results');
+  if (!res) return;
+  if (!q || q.length < 1) { res.innerHTML = ''; return; }
+  const { data } = await sb.from('profiles').select('*')
+    .ilike('username', `%${q}%`)
+    .neq('id', currentUser.id)
+    .limit(8);
+  res.innerHTML = '';
+  if (!data || !data.length) { res.innerHTML = '<div style="color:#6b7499;font-size:13px;margin-top:8px">未找到用户</div>'; return; }
+  for (const p of data) {
+    const d = document.createElement('div');
+    d.className = 'collab-result';
+    d.innerHTML = `<span>👤</span><span>${escHtml(p.username)}</span><span style="margin-left:auto;color:#6b7499;font-size:12px">${escHtml(p.id.slice(0,8))}…</span>`;
+    d.onclick = async () => {
+      const { error } = await sb.from('collaborators').insert({ mindmap_id: currentMapId, user_id: p.id, can_edit: true });
+      if (error && error.code === '23505') toast('该用户已是协作者');
+      else if (error) toast('添加失败');
+      else { toast(`已添加 ${p.username}`); loadCollabList(); }
+      res.innerHTML = '';
+      const si = document.getElementById('sh-search');
+      if (si) si.value = '';
+    };
+    res.appendChild(d);
+  }
+}
+
+async function loadCollabList() {
+  const el = document.getElementById('sh-collabs');
+  if (!el) return;
+  const { data } = await sb.from('collaborators')
+    .select('*, profiles(username)').eq('mindmap_id', currentMapId);
+  el.innerHTML = '';
+  if (!data || !data.length) { el.innerHTML = '<div style="color:#6b7499;font-size:13px">暂无协作者</div>'; return; }
+  for (const c of data) {
+    const d = document.createElement('div');
+    d.className = 'collab-list-item';
+    d.innerHTML = `<span>👤 ${escHtml(c.profiles?.username || '未知')}</span><button class="rm-btn" data-cid="${c.id}" title="移除">✕</button>`;
+    d.querySelector('.rm-btn').onclick = async () => {
+      await sb.from('collaborators').delete().eq('id', c.id);
+      toast('已移除');
+      loadCollabList();
+    };
+    el.appendChild(d);
+  }
+}
+
+// ─── Import Modal ─────────────────────────────────────────────────────────────
+document.getElementById('do-import').onclick = () => showImportModal();
+
+function showImportModal() {
+  const modal = createModal('📥 导入');
+  const body = modal.querySelector('.modal-body');
+  body.innerHTML = `
+    <div class="itabs">
+      <div class="itab on" data-ip="xmind">XMind</div>
+      <div class="itab" data-ip="image">PNG/JPG 背景</div>
+      <div class="itab" data-ip="json">JSON</div>
+    </div>
+    <div class="ipanel on" id="ip-xmind">
+      <div class="field"><label>选择 .xmind 文件</label><input type="file" id="xmind-file" accept=".xmind"></div>
+    </div>
+    <div class="ipanel" id="ip-image">
+      <div class="field"><label>选择图片文件</label><input type="file" id="img-file" accept=".png,.jpg,.jpeg,.gif,.webp"></div>
+      <div class="field">
+        <label>透明度: <span id="opacity-val">0.5</span></label>
+        <input type="range" id="img-opacity" min="0" max="1" step="0.05" value="0.5" style="width:100%">
+      </div>
+    </div>
+    <div class="ipanel" id="ip-json">
+      <div class="field"><label>选择 .json 文件</label><input type="file" id="json-file" accept=".json"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary close-modal">取消</button>
+      <button class="btn btn-primary" id="do-import-ok">导入</button>
+    </div>
+  `;
+
+  // Tab switch
+  body.querySelectorAll('.itab').forEach(t => {
+    t.onclick = () => {
+      body.querySelectorAll('.itab').forEach(x => x.classList.remove('on'));
+      body.querySelectorAll('.ipanel').forEach(x => x.classList.remove('on'));
+      t.classList.add('on');
+      document.getElementById('ip-' + t.dataset.ip).classList.add('on');
+    };
+  });
+
+  const opInput = document.getElementById('img-opacity');
+  const opVal = document.getElementById('opacity-val');
+  opInput.oninput = () => { opVal.textContent = opInput.value; };
+
+  document.getElementById('do-import-ok').onclick = async () => {
+    const activeTab = body.querySelector('.itab.on').dataset.ip;
+
+    if (activeTab === 'xmind') {
+      const file = document.getElementById('xmind-file').files[0];
+      if (!file) { toast('请选择文件'); return; }
+      try {
+        const zip = await JSZip.loadAsync(file);
+        let content;
+        // Try content.json first
+        const cj = zip.file('content.json');
+        if (cj) {
+          content = JSON.parse(await cj.async('string'));
+        } else {
+          // Try content.xml
+          toast('未找到 content.json，请使用较新版 XMind 导出'); return;
+        }
+        const root = content[0];
+        tree = xmindToTree(root.rootTopic || root);
+        document.getElementById('map-title').value = root.title || '导入的导图';
+        closeAllModals();
+        doLayout(); render(); fitView(); saveData();
+        toast('XMind 导入成功');
+      } catch (err) {
+        toast('解析失败: ' + err.message);
       }
-    }
-
-    async function saveData() {
-      const statusEl = document.getElementById('sync-status');
-      statusEl.className = 'sync-status syncing';
-      statusEl.textContent = '同步中...';
-      
-      const title = document.getElementById('title-input').value;
-      const { error } = await supabase.from('mindmaps').update({
-        tree: JSON.stringify(tree),
-        title: title,
-        updated_at: new Date().toISOString()
-      }).eq('id', currentMapId);
-      
-      if (error) {
-        statusEl.className = 'sync-status failed';
-        statusEl.textContent = '同步失败';
-      } else {
-        statusEl.className = 'sync-status synced';
-        statusEl.textContent = '已同步';
-        lastUpdatedAt = new Date().toISOString();
-      }
-    }
-
-    function startSyncPolling() {
-      if (syncTimer) clearInterval(syncTimer);
-      syncTimer = setInterval(async () => {
-        const { data } = await supabase.from('mindmaps').select('updated_at').eq('id', currentMapId).single();
-        if (data && data.updated_at !== lastUpdatedAt) {
-          await loadData();
-          layoutTree();
+    } else if (activeTab === 'image') {
+      const file = document.getElementById('img-file').files[0];
+      if (!file) { toast('请选择图片'); return; }
+      const reader = new FileReader();
+      reader.onload = e => {
+        const img = new Image();
+        img.onload = () => {
+          bgLayer = { url: e.target.result, x: -img.width/2, y: -img.height/2, w: img.width, h: img.height, opacity: parseFloat(document.getElementById('img-opacity').value) };
+          closeAllModals();
           render();
-          showToast('已同步他人更新 🔄');
-        }
-      }, 10000);
-    }
-
-    document.getElementById('back-btn').onclick = () => {
-      if (syncTimer) clearInterval(syncTimer);
-      currentMapId = null;
-      tree = null;
-      showListView();
-    };
-
-    document.getElementById('save-btn').onclick = saveData;
-
-    document.getElementById('title-input').addEventListener('input', () => {
-      saveData();
-    });
-
-    // Share
-    document.getElementById('share-btn').onclick = () => {
-      const modal = document.createElement('div');
-      modal.className = 'modal-overlay';
-      modal.innerHTML = `
-        <div class="modal">
-          <h3>共享设置</h3>
-          <div class="form-group">
-            <label>搜索用户</label>
-            <input type="text" id="share-search" placeholder="输入用户名">
-          </div>
-          <div id="share-search-results"></div>
-          <div class="collaborator-list">
-            <h4>当前协作者</h4>
-            <div id="collaborator-list"></div>
-          </div>
-          <div class="modal-actions">
-            <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">关闭</button>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(modal);
-      
-      loadCollaborators();
-      
-      document.getElementById('share-search').oninput = async (e) => {
-        const query = e.target.value.trim();
-        if (query.length < 1) {
-          document.getElementById('share-search-results').innerHTML = '';
-          return;
-        }
-        
-        const { data } = await supabase
-          .from('profiles')
-          .select('*')
-          .ilike('username', `%${query}%`)
-          .neq('id', currentUser.id)
-          .limit(10);
-        
-        const results = document.getElementById('share-search-results');
-        results.innerHTML = '';
-        
-        if (data && data.length > 0) {
-          data.forEach(profile => {
-            const div = document.createElement('div');
-            div.className = 'search-result';
-            div.textContent = profile.username;
-            div.onclick = async () => {
-              await supabase.from('collaborators').insert({
-                mindmap_id: currentMapId,
-                user_id: profile.id,
-                can_edit: true
-              });
-              loadCollaborators();
-              results.innerHTML = '';
-              document.getElementById('share-search').value = '';
-            };
-            results.appendChild(div);
-          });
-        }
-      };
-    };
-
-    async function loadCollaborators() {
-      const { data } = await supabase
-        .from('collaborators')
-        .select('*, profiles(username)')
-        .eq('mindmap_id', currentMapId);
-      
-      const list = document.getElementById('collaborator-list');
-      list.innerHTML = '';
-      
-      if (data && data.length > 0) {
-        data.forEach(collab => {
-          const item = document.createElement('div');
-          item.className = 'collaborator-item';
-          item.innerHTML = `
-            <span>${collab.profiles.username}</span>
-            <button class="remove-btn">✕</button>
-          `;
-          item.querySelector('.remove-btn').onclick = async () => {
-            await supabase.from('collaborators').delete().eq('id', collab.id);
-            loadCollaborators();
-          };
-          list.appendChild(item);
-        });
-      }
-    }
-
-    // Import/Export
-    document.getElementById('import-btn').onclick = () => {
-      const modal = document.createElement('div');
-      modal.className = 'modal-overlay';
-      modal.innerHTML = `
-        <div class="modal">
-          <h3>导入</h3>
-          <div class="import-tabs">
-            <div class="import-tab active" data-tab="xmind">XMind</div>
-            <div class="import-tab" data-tab="image">PNG/JPG</div>
-            <div class="import-tab" data-tab="json">JSON</div>
-          </div>
-          <div class="import-content active" data-content="xmind">
-            <div class="file-input-wrapper">
-              <input type="file" id="xmind-file" accept=".xmind">
-            </div>
-          </div>
-          <div class="import-content" data-content="image">
-            <div class="file-input-wrapper">
-              <input type="file" id="image-file" accept=".png,.jpg,.jpeg">
-            </div>
-            <div class="form-group">
-              <label>透明度</label>
-              <input type="range" id="image-opacity" min="0" max="1" step="0.1" value="0.5">
-            </div>
-          </div>
-          <div class="import-content" data-content="json">
-            <div class="file-input-wrapper">
-              <input type="file" id="json-file" accept=".json">
-            </div>
-          </div>
-          <div class="modal-actions">
-            <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">取消</button>
-            <button class="btn btn-primary" id="import-confirm">导入</button>
-          </div>
-        </div>
-      `;
-      document.body.appendChild(modal);
-      
-      let activeTab = 'xmind';
-      
-      modal.querySelectorAll('.import-tab').forEach(tab => {
-        tab.onclick = () => {
-          modal.querySelectorAll('.import-tab').forEach(t => t.classList.remove('active'));
-          modal.querySelectorAll('.import-content').forEach(c => c.classList.remove('active'));
-          tab.classList.add('active');
-          activeTab = tab.dataset.tab;
-          modal.querySelector(`[data-content="${activeTab}"]`).classList.add('active');
+          toast('背景图片已添加');
         };
-      });
-      
-      document.getElementById('import-confirm').onclick = async () => {
-        if (activeTab === 'xmind') {
-          const file = document.getElementById('xmind-file').files[0];
-          if (file) {
-            const zip = await JSZip.loadAsync(file);
-            const contentFile = zip.file('content.json');
-            if (contentFile) {
-              const content = JSON.parse(await contentFile.async('string'));
-              if (content && content.length > 0) {
-                const xmindTree = convertXmindTree(content[0].rootTopic);
-                tree = xmindTree;
-                document.getElementById('title-input').value = content[0].title || '导入的导图';
-                layoutTree();
-                render();
-                fitView();
-                saveData();
-                modal.remove();
-                showToast('导入成功');
-              }
-            }
-          }
-        } else if (activeTab === 'image') {
-          const file = document.getElementById('image-file').files[0];
-          if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              bgImage = {
-                url: e.target.result,
-                x: 0,
-                y: 0,
-                w: 800,
-                h: 600,
-                opacity: parseFloat(document.getElementById('image-opacity').value)
-              };
-              render();
-              modal.remove();
-              showToast('背景已添加');
-            };
-            reader.readAsDataURL(file);
-          }
-        } else if (activeTab === 'json') {
-          const file = document.getElementById('json-file').files[0];
-          if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-              const data = JSON.parse(e.target.result);
-              if (data.tree) {
-                tree = data.tree;
-                document.getElementById('title-input').value = data.title || '导入的导图';
-                layoutTree();
-                render();
-                fitView();
-                saveData();
-                modal.remove();
-                showToast('导入成功');
-              }
-            };
-            reader.readAsText(file);
-          }
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    } else if (activeTab === 'json') {
+      const file = document.getElementById('json-file').files[0];
+      if (!file) { toast('请选择文件'); return; }
+      const reader = new FileReader();
+      reader.onload = e => {
+        try {
+          const data = JSON.parse(e.target.result);
+          if (!data.tree) { toast('JSON 格式错误，缺少 tree 字段'); return; }
+          tree = data.tree;
+          if (data.title) document.getElementById('map-title').value = data.title;
+          closeAllModals();
+          doLayout(); render(); fitView(); saveData();
+          toast('JSON 导入成功');
+        } catch (err) {
+          toast('解析失败: ' + err.message);
         }
       };
-    };
-
-    function convertXmindTree(topic) {
-      const node = createNode(topic.title);
-      if (topic.children && topic.children.attached) {
-        node.children = topic.children.attached.map(convertXmindTree);
-      }
-      return node;
+      reader.readAsText(file);
     }
+  };
+}
 
-    document.getElementById('export-svg-btn').onclick = () => {
-      const svg = document.getElementById('svg-canvas');
-      const svgData = new XMLSerializer().serializeToString(svg);
-      const blob = new Blob([svgData], { type: 'image/svg+xml' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'mindmap.svg';
-      a.click();
-      URL.revokeObjectURL(url);
-    };
+function xmindToTree(xNode) {
+  const n = makeNode(xNode.title || '节点');
+  const children = xNode.children?.attached || xNode.children || [];
+  n.children = children.map(c => xmindToTree(c));
+  return n;
+}
 
-    document.getElementById('export-json-btn').onclick = () => {
-      const data = {
-        title: document.getElementById('title-input').value,
-        tree: tree
-      };
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'mindmap.json';
-      a.click();
-      URL.revokeObjectURL(url);
-    };
+// ─── Export ───────────────────────────────────────────────────────────────────
+document.getElementById('do-export-svg').onclick = () => {
+  if (!tree) return;
+  const svg = document.getElementById('main-svg');
+  const clone = svg.cloneNode(true);
+  // Reset transform
+  const world = clone.getElementById ? clone.getElementById('world') : clone.querySelector('#world');
+  if (world) world.removeAttribute('transform');
+  const serializer = new XMLSerializer();
+  const svgStr = serializer.serializeToString(clone);
+  const blob = new Blob([svgStr], { type: 'image/svg+xml' });
+  downloadBlob(blob, 'mindmap.svg');
+};
 
-    // Auto-collapse if >10 children
-    function autoCollapse() {
-      function check(node) {
-        if (node.children.length > 10) {
-          node.collapsed = true;
-        }
-        node.children.forEach(check);
-      }
-      check(tree);
-    }
+document.getElementById('do-export-json').onclick = () => {
+  if (!tree) return;
+  const data = { title: document.getElementById('map-title').value, tree };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  downloadBlob(blob, 'mindmap.json');
+};
 
-    // Init
-    (async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        currentUser = session.user;
-        await loadUserProfile();
-        showListView();
-      } else {
-        showAuthView();
-      }
-    })();
-  </script>
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 500);
+}
+
+// ─── Modal helpers ────────────────────────────────────────────────────────────
+function createModal(title) {
+  const bg = document.createElement('div');
+  bg.className = 'modal-bg';
+  bg.innerHTML = `<div class="modal"><h3>${escHtml(title)}</h3><div class="modal-body"></div></div>`;
+  document.body.appendChild(bg);
+  bg.addEventListener('click', e => { if (e.target === bg) bg.remove(); });
+  bg.querySelectorAll('.close-modal').forEach(b => b.onclick = () => bg.remove());
+  // Add default close button in footer if not present
+  const footer = bg.querySelector('.modal-footer');
+  if (!footer) {
+    const f = document.createElement('div');
+    f.className = 'modal-footer';
+    f.innerHTML = '<button class="btn btn-secondary close-modal">关闭</button>';
+    f.querySelector('.close-modal').onclick = () => bg.remove();
+    bg.querySelector('.modal').appendChild(f);
+  }
+  return bg.querySelector('.modal');
+}
+
+function closeAllModals() {
+  document.querySelectorAll('.modal-bg').forEach(m => m.remove());
+}
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+(async () => {
+  showSpinner();
+  const { data: { session } } = await sb.auth.getSession();
+  hideSpinner();
+  if (session) {
+    currentUser = session.user;
+    await loadProfile();
+    showView('v-list');
+    loadMapList();
+  } else {
+    showView('v-auth');
+  }
+})();
+</script>
 </body>
 </html>
