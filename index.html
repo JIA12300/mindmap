@@ -1126,6 +1126,14 @@ document.getElementById('do-new-map').onclick = async () => {
   const title = prompt('请输入导图标题：', '未命名导图');
   if (!title) return;
   showSpinner();
+
+  // 确保 profiles 里有当前用户记录（upsert，防止外键约束失败）
+  const { error: profileErr } = await sb.from('profiles').upsert({
+    id: currentUser.id,
+    username: currentUserProfile?.username || currentUser.email.split('@')[0]
+  }, { onConflict: 'id' });
+  if (profileErr) { hideSpinner(); toast('用户信息同步失败: ' + profileErr.message); return; }
+
   const root = makeNode('中心主题', 0);
   root._w = 120; root._h = 40;
   const { data, error } = await sb.from('mindmaps').insert({
