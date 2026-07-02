@@ -1151,12 +1151,14 @@ async function loadMapList() {
   grid.innerHTML = '<div style="color:#6b7499;font-size:14px">加载中…</div>';
   
   // Own maps
-  const { data: ownMaps } = await sb.from('mindmaps')
+  const { data: ownMaps, error: e1 } = await sb.from('mindmaps')
     .select('*').eq('owner_id', currentUser.id).order('created_at', { ascending: false });
+  if (e1) { grid.innerHTML = `<div style="color:#ef5350">加载失败: ${e1.message}</div>`; return; }
 
   // Shared maps via collaborators
-  const { data: collabs } = await sb.from('collaborators')
+  const { data: collabs, error: e2 } = await sb.from('collaborators')
     .select('mindmap_id').eq('user_id', currentUser.id);
+  if (e2) { grid.innerHTML = `<div style="color:#ef5350">加载失败: ${e2.message}</div>`; return; }
 
   let sharedMaps = [];
   if (collabs && collabs.length > 0) {
