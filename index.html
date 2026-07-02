@@ -1017,7 +1017,7 @@ async function saveData() {
   const title = document.getElementById('map-title').value;
   const now = new Date().toISOString();
   const { error } = await sb.from('mindmaps').update({
-    tree: JSON.stringify(tree),
+    tree: tree,
     title,
     updated_at: now
   }).eq('id', currentMapId);
@@ -1131,7 +1131,7 @@ document.getElementById('do-new-map').onclick = async () => {
   const { data, error } = await sb.from('mindmaps').insert({
     owner_id: currentUser.id,
     title,
-    tree: JSON.stringify(root)
+    tree: root
   }).select().single();
   hideSpinner();
   if (error) { toast('创建失败: ' + error.message); return; }
