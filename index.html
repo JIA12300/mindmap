@@ -1,1794 +1,1687 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>协作思维导图</title>
-<style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  
-  :root {
-    --bg: #f0f2f8;
-    --surface: #ffffff;
-    --surface2: #f5f6fa;
-    --border: #dde1f0;
-    --accent: #6c63ff;
-    --accent2: #ff6584;
-    --text: #1a1d2e;
-    --text2: #6b7499;
-    --success: #2da872;
-    --warn: #f59e0b;
-    --node-colors: #6c63ff, #ff6584, #4caf87, #ffb74d, #42a5f5, #ef5350, #ab47bc, #26c6da;
-  }
-
-  body {
-    font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    user-select: none;
-  }
-
-  /* ── 顶栏 ── */
-  #topbar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    z-index: 100;
-    flex-shrink: 0;
-  }
-  #topbar h1 {
-    font-size: 15px;
-    font-weight: 700;
-    color: var(--accent);
-    letter-spacing: .5px;
-  }
-  #title-input {
-    flex: 1;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-    font-size: 14px;
-    padding: 5px 10px;
-    outline: none;
-    max-width: 300px;
-  }
-  #title-input:focus { border-color: var(--accent); }
-
-  .spacer { flex: 1; }
-
-  #sync-status {
-    font-size: 12px;
-    color: var(--text2);
-    display: flex;
-    align-items: center;
-    gap: 5px;
-  }
-  #sync-dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    background: var(--success);
-    transition: background .3s;
-  }
-  #sync-dot.syncing { background: var(--warn); animation: pulse .8s infinite; }
-  #sync-dot.error { background: var(--accent2); }
-  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
-
-  .btn {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    color: var(--text);
-    border-radius: 6px;
-    padding: 5px 12px;
-    font-size: 13px;
-    cursor: pointer;
-    transition: all .15s;
-    white-space: nowrap;
-  }
-  .btn:hover { border-color: var(--accent); color: var(--accent); }
-  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  .btn.primary:hover { opacity: .85; }
-  .btn.danger:hover { border-color: var(--accent2); color: var(--accent2); }
-
-  /* ── 工具栏 ── */
-  #toolbar {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    font-size: 12px;
-    color: var(--text2);
-    flex-shrink: 0;
-    flex-wrap: wrap;
-  }
-  .tool-group {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding-right: 12px;
-    border-right: 1px solid var(--border);
-  }
-  .tool-group:last-child { border-right: none; }
-  .tool-label { color: var(--text2); font-size: 11px; }
-  
-  kbd {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 3px;
-    padding: 1px 5px;
-    font-size: 11px;
-    color: var(--text2);
-  }
-
-  /* ── 画布 ── */
-  #canvas-wrap {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-    cursor: grab;
-  }
-  #canvas-wrap.grabbing { cursor: grabbing; }
-  
-  svg#canvas {
-    width: 100%; height: 100%;
-    position: absolute; top: 0; left: 0;
-  }
-
-  /* ── SVG 节点样式 ── */
-  .node-group { cursor: pointer; }
-  .node-rect {
-    rx: 10; ry: 10;
-    filter: drop-shadow(0 2px 8px rgba(0,0,0,.4));
-    transition: filter .15s;
-  }
-  .node-group:hover .node-rect { filter: drop-shadow(0 4px 16px rgba(108,99,255,.4)); }
-  .node-group.selected .node-rect { stroke-width: 2.5 !important; }
-  .node-text {
-    fill: #fff;
-    font-size: 13px;
-    font-family: 'PingFang SC','Microsoft YaHei',sans-serif;
-    pointer-events: none;
-  }
-  .node-text.root-text { font-size: 15px; font-weight: 700; }
-  
-  .conn-line {
-    fill: none;
-    stroke-width: 2;
-    opacity: .45;
-  }
-  
-  /* ── 侧栏（节点编辑） ── */
-  #sidebar {
-    position: absolute;
-    right: 0; top: 0;
-    width: 260px;
-    height: 100%;
-    background: var(--surface);
-    border-left: 1px solid var(--border);
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-    transform: translateX(100%);
-    transition: transform .2s ease;
-    z-index: 50;
-  }
-  #sidebar.open { transform: translateX(0); }
-  #sidebar h2 { font-size: 13px; color: var(--text2); font-weight: 600; }
-  
-  .field-label { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
-  .field-input, .field-textarea {
-    width: 100%;
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    color: var(--text);
-    font-size: 13px;
-    padding: 7px 10px;
-    outline: none;
-    font-family: inherit;
-    resize: vertical;
-  }
-  .field-input:focus, .field-textarea:focus { border-color: var(--accent); }
-  .field-textarea { min-height: 80px; }
-
-  .color-row {
-    display: flex; gap: 7px; flex-wrap: wrap;
-  }
-  .color-dot {
-    width: 22px; height: 22px;
-    border-radius: 50%;
-    cursor: pointer;
-    border: 2px solid transparent;
-    transition: transform .12s;
-  }
-  .color-dot:hover { transform: scale(1.2); }
-  .color-dot.active { border-color: #fff; }
-
-  /* ── 协作者列表 ── */
-  #collab-bar {
-    position: absolute;
-    bottom: 16px; left: 16px;
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    z-index: 50;
-  }
-  .collab-avatar {
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    background: var(--accent);
-    display: flex; align-items: center; justify-content: center;
-    font-size: 11px; font-weight: 700; color: #fff;
-    border: 2px solid var(--bg);
-    title: attr(title);
-  }
-
-  /* ── Toast ── */
-  #toast-container {
-    position: absolute;
-    top: 80px; right: 16px;
-    display: flex; flex-direction: column; gap: 8px;
-    z-index: 200;
-    pointer-events: none;
-  }
-  .toast {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 14px;
-    font-size: 13px;
-    animation: toastIn .2s ease;
-    max-width: 240px;
-    box-shadow: 0 4px 16px rgba(0,0,0,.12);
-  }
-  .toast.ok { border-color: var(--success); color: var(--success); }
-  .toast.err { border-color: var(--accent2); color: var(--accent2); }
-  @keyframes toastIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:none} }
-
-  /* ── 加载遮罩 ── */
-  #loading {
-    position: absolute; inset: 0;
-    background: var(--bg);
-    display: flex; flex-direction: column;
-    align-items: center; justify-content: center;
-    gap: 16px;
-    z-index: 999;
-    transition: opacity .4s;
-  }
-  #loading.hidden { opacity: 0; pointer-events: none; }
-  .spinner {
-    width: 36px; height: 36px;
-    border: 3px solid var(--border);
-    border-top-color: var(--accent);
-    border-radius: 50%;
-    animation: spin .8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  #loading p { color: var(--text2); font-size: 14px; }
-
-  /* ── 右键菜单 ── */
-  #ctx-menu {
-    position: absolute;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 4px;
-    min-width: 150px;
-    z-index: 200;
-    display: none;
-    box-shadow: 0 8px 32px rgba(0,0,0,.4);
-  }
-  .ctx-item {
-    padding: 7px 12px;
-    border-radius: 5px;
-    font-size: 13px;
-    cursor: pointer;
-    display: flex; align-items: center; gap: 8px;
-  }
-  .ctx-item:hover { background: var(--surface2); }
-  .ctx-item.danger:hover { color: var(--accent2); }
-  .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
-
-  /* ── 导入弹窗 ── */
-  #import-modal {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,.65);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 500;
-    display: none;
-  }
-  #import-modal.open { display: flex; }
-  #import-box {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 28px 32px;
-    width: 440px;
-    max-width: 96vw;
-    display: flex; flex-direction: column; gap: 18px;
-    box-shadow: 0 16px 48px rgba(0,0,0,.5);
-  }
-  #import-box h2 { font-size: 15px; font-weight: 700; }
-  #import-box p { font-size: 12px; color: var(--text2); line-height: 1.6; }
-  .import-tabs {
-    display: flex; gap: 6px;
-  }
-  .import-tab {
-    flex: 1; padding: 7px 0;
-    border: 1px solid var(--border);
-    border-radius: 7px;
-    background: var(--surface2);
-    color: var(--text2);
-    font-size: 13px; cursor: pointer; text-align: center;
-    transition: all .15s;
-  }
-  .import-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(108,99,255,.12); }
-  .import-dropzone {
-    border: 2px dashed var(--border);
-    border-radius: 10px;
-    padding: 28px 16px;
-    text-align: center;
-    color: var(--text2);
-    font-size: 13px;
-    cursor: pointer;
-    transition: border-color .15s, background .15s;
-  }
-  .import-dropzone:hover, .import-dropzone.dragover {
-    border-color: var(--accent);
-    background: rgba(108,99,255,.06);
-    color: var(--accent);
-  }
-  .import-dropzone .drop-icon { font-size: 32px; margin-bottom: 10px; }
-  .import-mode-desc {
-    font-size: 11px; color: var(--text2);
-    background: var(--surface2);
-    border-radius: 6px; padding: 8px 10px;
-    line-height: 1.6;
-  }
-  .import-actions { display: flex; gap: 10px; justify-content: flex-end; }
-  /* 背景图层控制条 */
-  #bg-control {
-    position: absolute;
-    top: 8px; left: 50%;
-    transform: translateX(-50%);
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 5px 12px;
-    display: none;
-    align-items: center;
-    gap: 10px;
-    font-size: 12px;
-    color: var(--text2);
-    z-index: 80;
-    box-shadow: 0 4px 16px rgba(0,0,0,.3);
-  }
-  #bg-control.visible { display: flex; }
-  #bg-opacity { width: 80px; accent-color: var(--accent); }
-
-  .collapse-btn circle { transition: fill .15s; }
-  .collapse-btn:hover circle { fill: var(--accent) !important; }
-
-  /* ── Token 设置弹窗 ── */
-  #token-modal {
-    position: fixed; inset: 0;
-    background: rgba(0,0,0,.55);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 9999;
-  }
-  #token-modal.hidden { display: none; }
-  .modal-box {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 28px 32px;
-    max-width: 420px; width: 90%;
-    box-shadow: 0 16px 48px rgba(0,0,0,.3);
-  }
-  .modal-box h2 { font-size: 16px; margin-bottom: 8px; }
-  .modal-box p  { font-size: 13px; color: var(--text2); margin-bottom: 18px; line-height: 1.6; }
-  .modal-box a  { color: var(--accent); }
-  .modal-input {
-    width: 100%; padding: 8px 12px;
-    background: var(--surface2); border: 1px solid var(--border);
-    border-radius: 7px; color: var(--text); font-size: 13px;
-    outline: none; margin-bottom: 14px;
-  }
-  .modal-input:focus { border-color: var(--accent); }
-
-  /* ── 迷你地图 ── */
-  #minimap {
-    position: absolute;
-    bottom: 16px; right: 16px;
-    width: 140px; height: 90px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    overflow: hidden;
-    opacity: .8;
-  }
-  #minimap svg { width: 100%; height: 100%; }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MindMap - 思维导图协作</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f0f2f8; color: #1a1d2e; }
+    
+    :root {
+      --bg: #f0f2f8;
+      --surface: #fff;
+      --border: #dde1f0;
+      --text: #1a1d2e;
+      --text2: #6b7499;
+      --accent: #6c63ff;
+      --accent-hover: #5a52e0;
+    }
+    
+    .hidden { display: none !important; }
+    
+    /* Auth View */
+    #auth-view {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .auth-logo { font-size: 48px; margin-bottom: 40px; }
+    .auth-card {
+      background: var(--surface);
+      border-radius: 16px;
+      padding: 40px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 4px 24px rgba(108,99,255,.08);
+    }
+    .auth-tabs {
+      display: flex;
+      margin-bottom: 30px;
+      border-bottom: 2px solid var(--border);
+    }
+    .auth-tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -2px;
+      transition: all 0.2s;
+      color: var(--text2);
+    }
+    .auth-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+    .auth-form { display: none; }
+    .auth-form.active { display: block; }
+    .form-group { margin-bottom: 20px; }
+    .form-group label { display: block; margin-bottom: 8px; color: var(--text); font-weight: 500; }
+    .form-group input {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus { outline: none; border-color: var(--accent); }
+    .btn {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      width: 100%;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary {
+      background: var(--border);
+      color: var(--text);
+    }
+    .btn-secondary:hover { background: #c8cde0; }
+    .error-msg { color: #ef5350; font-size: 13px; margin-top: 8px; }
+    
+    /* List View */
+    #list-view { min-height: 100vh; }
+    .topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .topbar-logo { font-size: 24px; font-weight: 600; }
+    .topbar-user { display: flex; align-items: center; gap: 16px; }
+    .topbar-username { color: var(--text2); }
+    .list-content { padding: 32px; max-width: 1200px; margin: 0 auto; }
+    .list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 32px;
+    }
+    .list-header h2 { font-size: 28px; }
+    .btn-new {
+      background: var(--accent);
+      color: #fff;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+    .btn-new:hover { background: var(--accent-hover); }
+    .map-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .map-card {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 20px;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 1px solid var(--border);
+    }
+    .map-card:hover {
+      box-shadow: 0 4px 16px rgba(108,99,255,.12);
+      transform: translateY(-2px);
+    }
+    .map-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .map-card-title { font-size: 18px; font-weight: 600; flex: 1; }
+    .map-card-tag {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: var(--border);
+      color: var(--text2);
+    }
+    .map-card-tag.shared { background: #e3f2fd; color: #1976d2; }
+    .map-card-time { font-size: 13px; color: var(--text2); }
+    .map-card-actions { margin-top: 12px; display: flex; gap: 8px; }
+    .map-card-actions button {
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .map-card-actions button:hover { background: var(--bg); }
+    .map-card-actions .btn-delete { color: #ef5350; }
+    
+    /* Editor View */
+    #editor-view { height: 100vh; display: flex; flex-direction: column; }
+    .editor-topbar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .editor-topbar .btn-back { background: none; border: none; font-size: 20px; cursor: pointer; }
+    .editor-topbar .title-input {
+      flex: 1;
+      border: none;
+      font-size: 18px;
+      font-weight: 600;
+      padding: 8px;
+      border-radius: 6px;
+    }
+    .editor-topbar .title-input:focus { outline: none; background: var(--bg); }
+    .sync-status {
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .sync-status.synced { background: #e8f5e9; color: #2e7d32; }
+    .sync-status.syncing { background: #fff3e0; color: #f57c00; }
+    .sync-status.failed { background: #ffebee; color: #c62828; }
+    .editor-content { flex: 1; position: relative; overflow: hidden; }
+    #svg-canvas { width: 100%; height: 100%; cursor: grab; }
+    #svg-canvas.dragging { cursor: grabbing; }
+    
+    /* Right Sidebar */
+    .sidebar {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 300px;
+      height: 100%;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      padding: 20px;
+      overflow-y: auto;
+      transform: translateX(100%);
+      transition: transform 0.3s;
+    }
+    .sidebar.open { transform: translateX(0); }
+    .sidebar h3 { margin-bottom: 20px; }
+    .sidebar .form-group { margin-bottom: 16px; }
+    .sidebar textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: 14px;
+      resize: vertical;
+      min-height: 80px;
+    }
+    .color-palette { display: flex; gap: 8px; flex-wrap: wrap; }
+    .color-dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+    }
+    .color-dot.active { border-color: var(--accent); }
+    
+    /* Context Menu */
+    .context-menu {
+      position: absolute;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.1);
+      padding: 6px;
+      z-index: 1000;
+      min-width: 160px;
+    }
+    .context-menu-item {
+      padding: 8px 12px;
+      cursor: pointer;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .context-menu-item:hover { background: var(--bg); }
+    
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,.4);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+    .modal {
+      background: var(--surface);
+      border-radius: 12px;
+      padding: 24px;
+      min-width: 400px;
+      max-width: 600px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal h3 { margin-bottom: 20px; }
+    .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; }
+    
+    /* Collaborator List */
+    .collaborator-list { margin-top: 20px; }
+    .collaborator-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+    .collaborator-item .remove-btn {
+      background: none;
+      border: none;
+      color: #ef5350;
+      cursor: pointer;
+      font-size: 18px;
+    }
+    .search-result {
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      margin-top: 8px;
+      cursor: pointer;
+    }
+    .search-result:hover { background: var(--bg); }
+    
+    /* Minimap */
+    .minimap {
+      position: absolute;
+      right: 20px;
+      bottom: 20px;
+      width: 140px;
+      height: 90px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    #minimap-svg { width: 100%; height: 100%; }
+    
+    /* Toast */
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 20px;
+      box-shadow: 0 4px 16px rgba(0,0,0,.1);
+      z-index: 3000;
+      animation: slideIn 0.3s;
+    }
+    @keyframes slideIn {
+      from { transform: translateX(400px); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    
+    /* Loading */
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255,255,255,.8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 4000;
+    }
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    
+    /* Import Tabs */
+    .import-tabs { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .import-tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+    }
+    .import-tab.active { border-bottom-color: var(--accent); color: var(--accent); }
+    .import-content { display: none; }
+    .import-content.active { display: block; }
+    .file-input-wrapper { position: relative; }
+    .file-input-wrapper input[type="file"] { width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px; }
+  </style>
 </head>
 <body>
-
-<!-- 顶栏 -->
-<div id="topbar">
-  <h1>🧠 MindMap</h1>
-  <input id="title-input" type="text" placeholder="导图标题…" value="我的思维导图" />
-  <div class="spacer"></div>
-  <div id="sync-status">
-    <div id="sync-dot"></div>
-    <span id="sync-label">已同步</span>
-  </div>
-  <button class="btn" id="btn-import">📥 导入</button>
-  <button class="btn" id="btn-share" title="复制当前页面链接">🔗 分享</button>
-  <button class="btn" id="btn-export">⬇ 导出</button>
-  <button class="btn primary" id="btn-save">💾 保存</button>
-</div>
-
-<!-- 工具栏 -->
-<div id="toolbar">
-  <div class="tool-group">
-    <span class="tool-label">新增</span>
-    <button class="btn" id="btn-add-child">➕ 子节点</button>
-    <button class="btn" id="btn-add-sibling">↔ 同级</button>
-  </div>
-  <div class="tool-group">
-    <span class="tool-label">操作</span>
-    <button class="btn danger" id="btn-delete">🗑 删除</button>
-    <button class="btn" id="btn-collapse">折叠 / 展开</button>
-  </div>
-  <div class="tool-group">
-    <span class="tool-label">视图</span>
-    <button class="btn" id="btn-fit">居中</button>
-    <button class="btn" id="btn-zoom-in">＋</button>
-    <button class="btn" id="btn-zoom-out">－</button>
-  </div>
-  <div class="tool-group">
-    <kbd>Tab</kbd> 子节点
-    <kbd>Enter</kbd> 同级
-    <kbd>Del</kbd> 删除
-    <kbd>F2</kbd> 编辑
-    <kbd>空格</kbd> 居中
-  </div>
-</div>
-
-<!-- 主画布 -->
-<div id="canvas-wrap">
-  <svg id="canvas">
-    <defs>
-      <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-        <path d="M0,0 L6,3 L0,6 Z" fill="none"/>
-      </marker>
-    </defs>
-    <g id="canvas-g">
-      <g id="lines-g"></g>
-      <g id="nodes-g"></g>
-    </g>
-  </svg>
-
-  <!-- 侧栏 -->
-  <div id="sidebar">
-    <h2>✏️ 节点属性</h2>
-    <div>
-      <div class="field-label">标签</div>
-      <input id="node-label" class="field-input" type="text" placeholder="节点文字…"/>
-    </div>
-    <div>
-      <div class="field-label">备注</div>
-      <textarea id="node-note" class="field-textarea" placeholder="备注信息…"></textarea>
-    </div>
-    <div style="display:flex;gap:10px;align-items:flex-end">
-      <div style="flex:1">
-        <div class="field-label">字号</div>
-        <input id="node-fontsize" class="field-input" type="number" min="10" max="32" value="13" style="width:100%"/>
+  <!-- Auth View -->
+  <div id="auth-view">
+    <div class="auth-logo">🧠 MindMap</div>
+    <div class="auth-card">
+      <div class="auth-tabs">
+        <div class="auth-tab active" data-tab="login">登录</div>
+        <div class="auth-tab" data-tab="register">注册</div>
       </div>
-      <div style="flex:1">
-        <div class="field-label">字色</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap" id="font-color-picker"></div>
-      </div>
-    </div>
-    <div>
-      <div class="field-label">背景色</div>
-      <div class="color-row" id="color-picker"></div>
-    </div>
-    <div style="display:flex;gap:8px;margin-top:auto;">
-      <button class="btn primary" id="sidebar-save" style="flex:1">应用</button>
-      <button class="btn" id="sidebar-close">关闭</button>
+      <form id="login-form" class="auth-form active">
+        <div class="form-group">
+          <label>邮箱</label>
+          <input type="email" id="login-email" required>
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="login-password" required>
+        </div>
+        <div id="login-error" class="error-msg"></div>
+        <button type="submit" class="btn btn-primary">登录</button>
+      </form>
+      <form id="register-form" class="auth-form">
+        <div class="form-group">
+          <label>邮箱</label>
+          <input type="email" id="register-email" required>
+        </div>
+        <div class="form-group">
+          <label>用户名</label>
+          <input type="text" id="register-username" pattern="[a-zA-Z0-9_]{3,20}" required title="3-20位字母数字下划线">
+        </div>
+        <div class="form-group">
+          <label>密码</label>
+          <input type="password" id="register-password" required minlength="6">
+        </div>
+        <div class="form-group">
+          <label>确认密码</label>
+          <input type="password" id="register-password-confirm" required>
+        </div>
+        <div id="register-error" class="error-msg"></div>
+        <button type="submit" class="btn btn-primary">注册</button>
+      </form>
     </div>
   </div>
 
-  <!-- 协作者 -->
-  <div id="collab-bar"></div>
-
-  <!-- 迷你地图 -->
-  <div id="minimap"><svg id="minimap-svg"></svg></div>
-
-  <!-- 右键菜单 -->
-  <div id="ctx-menu">
-    <div class="ctx-item" id="ctx-add-child">➕ 添加子节点</div>
-    <div class="ctx-item" id="ctx-add-sibling">↔ 添加同级节点</div>
-    <div class="ctx-item" id="ctx-edit">✏️ 编辑</div>
-    <div class="ctx-item" id="ctx-collapse">📦 折叠 / 展开</div>
-    <div class="ctx-sep"></div>
-    <div class="ctx-item" id="ctx-cut">✂️ 剪切分支 <kbd style="margin-left:auto;font-size:10px">⌘X</kbd></div>
-    <div class="ctx-item" id="ctx-paste">📋 粘贴为子节点 <kbd style="margin-left:auto;font-size:10px">⌘V</kbd></div>
-    <div class="ctx-sep"></div>
-    <div class="ctx-item danger" id="ctx-delete">🗑 删除节点</div>
+  <!-- List View -->
+  <div id="list-view" class="hidden">
+    <div class="topbar">
+      <div class="topbar-logo">🧠 MindMap</div>
+      <div class="topbar-user">
+        <span class="topbar-username" id="current-username"></span>
+        <button class="btn btn-secondary" id="logout-btn">退出</button>
+      </div>
+    </div>
+    <div class="list-content">
+      <div class="list-header">
+        <h2>我的导图</h2>
+        <button class="btn btn-new" id="new-map-btn">+ 新建导图</button>
+      </div>
+      <div class="map-grid" id="map-grid"></div>
+    </div>
   </div>
 
-  <!-- 导入弹窗 -->
-  <div id="import-modal">
-    <div id="import-box">
-      <h2>📥 导入文件</h2>
-      <div class="import-tabs">
-        <div class="import-tab active" data-fmt="xmind">🗂 XMind</div>
-        <div class="import-tab" data-fmt="png">🖼 PNG 图片</div>
-        <div class="import-tab" data-fmt="pdf">📄 PDF</div>
+  <!-- Editor View -->
+  <div id="editor-view" class="hidden">
+    <div class="editor-topbar">
+      <button class="btn-back" id="back-btn">←</button>
+      <input type="text" class="title-input" id="title-input" placeholder="导图标题">
+      <button class="btn btn-secondary" id="share-btn">👥 共享</button>
+      <button class="btn btn-secondary" id="import-btn">📥 导入</button>
+      <button class="btn btn-secondary" id="export-svg-btn">⬇ 导出SVG</button>
+      <button class="btn btn-secondary" id="export-json-btn">📦 导出JSON</button>
+      <div class="sync-status synced" id="sync-status">已同步</div>
+      <button class="btn btn-primary" id="save-btn">💾 保存</button>
+    </div>
+    <div class="editor-content">
+      <svg id="svg-canvas"></svg>
+      <div class="sidebar" id="sidebar">
+        <h3>节点编辑</h3>
+        <div class="form-group">
+          <label>标签</label>
+          <input type="text" id="node-label">
+        </div>
+        <div class="form-group">
+          <label>备注</label>
+          <textarea id="node-note"></textarea>
+        </div>
+        <div class="form-group">
+          <label>背景色</label>
+          <div class="color-palette" id="bg-colors"></div>
+        </div>
+        <div class="form-group">
+          <label>字号</label>
+          <input type="number" id="node-fontsize" min="10" max="32" value="14">
+        </div>
+        <div class="form-group">
+          <label>字色</label>
+          <div class="color-palette" id="text-colors"></div>
+        </div>
       </div>
-      <div class="import-dropzone" id="import-dropzone">
-        <div class="drop-icon">🗂</div>
-        <div id="drop-hint">点击选择文件，或拖拽到此处</div>
-        <input type="file" id="import-file-input" style="display:none" accept=".xmind">
-      </div>
-      <div class="import-mode-desc" id="import-mode-desc">
-        <strong>XMind 导入：</strong>完整还原思维导图结构，支持继续编辑。支持 .xmind 格式（XMind 8 / ZEN / 2022+）。
-      </div>
-      <div class="import-actions">
-        <button class="btn" id="import-cancel">取消</button>
-        <button class="btn primary" id="import-confirm" disabled>导入</button>
+      <div class="minimap">
+        <svg id="minimap-svg"></svg>
       </div>
     </div>
   </div>
 
-  <!-- 背景图层控制条 -->
-  <div id="bg-control">
-    <span>📌 背景参考图</span>
-    <label>透明度
-      <input type="range" id="bg-opacity" min="0" max="100" value="40">
-    </label>
-    <button class="btn" id="bg-remove" style="padding:3px 8px;font-size:11px">移除</button>
-  </div>
+  <script>
+    // Supabase
+    const SUPABASE_URL = 'https://tmtlfexxtksgsuqwkiz.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_EnsF3AyVfnjry9qJUvqZHg_JIPAn7kK';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-  <!-- Toast -->
-  <div id="toast-container"></div>
+    // State
+    let currentUser = null;
+    let currentMapId = null;
+    let tree = null;
+    let selectedNode = null;
+    let clipboard = null;
+    let lastUpdatedAt = null;
+    let syncTimer = null;
+    let bgImage = null;
 
-  <!-- Token 设置弹窗 -->
-  <div id="token-modal" class="hidden">
-    <div class="modal-box">
-      <h2>🔑 输入访问 Token</h2>
-      <p>
-        首次使用需要输入 GitHub Token，用于读写共享数据。<br>
-        Token 只保存在你的浏览器本地，不会上传到任何服务器。<br><br>
-        没有 Token？请联系导图创建者获取，或前往
-        <a href="https://github.com/settings/tokens/new" target="_blank">GitHub → Settings → Tokens</a>
-        创建一个勾选了 <b>gist</b> 权限的 Token。
-      </p>
-      <input id="token-input" class="modal-input" type="password" placeholder="ghp_xxxxxxxxxxxxxxxx" />
-      <div style="display:flex;gap:10px;">
-        <button class="btn primary" id="token-confirm" style="flex:1">确认并进入</button>
-        <button class="btn" id="token-skip">跳过（只读模式）</button>
-      </div>
-    </div>
-  </div>
+    const COLORS = ['#6c63ff','#ff6584','#4caf87','#ffb74d','#42a5f5','#ef5350','#ab47bc','#26c6da','#78909c','#f06292'];
+    const TEXT_COLORS = ['#1a1d2e','#ffffff','#6c63ff','#ff6584','#4caf87','#ffb74d','#42a5f5','#ef5350'];
 
-  <!-- Loading -->
-  <div id="loading">
-    <div class="spinner"></div>
-    <p>正在加载数据…</p>
-  </div>
-</div>
-
-<script>
-/* ════════════════════════════════════════════
-   协作思维导图 — 完整逻辑
-   ════════════════════════════════════════════ */
-
-// ─── 颜色集 ─────────────────────────────────
-const NODE_COLORS = [
-  '#6c63ff','#ff6584','#4caf87','#ffb74d',
-  '#42a5f5','#ef5350','#ab47bc','#26c6da',
-  '#78909c','#f06292'
-];
-const ROOT_COLOR = '#6c63ff';
-
-// ─── 状态 ───────────────────────────────────
-let tree = null;            // {id, label, note, color, x, y, collapsed, children:[]}
-let selectedId = null;
-let transform = { x: 0, y: 0, scale: 1 };
-let isDragging = false;
-let dragStart = null;
-let dragNodeId = null;     // 正在拖动的节点 id
-let lastSyncHash = '';
-let syncInterval = null;
-let localUser = `用户_${Math.random().toString(36).slice(2,6)}`;
-let collabPresence = {};   // {userId: {name, ts}}
-const NODE_W = 120, NODE_H = 38;
-
-// ─── DOM ────────────────────────────────────
-const canvasWrap = document.getElementById('canvas-wrap');
-const canvasG    = document.getElementById('canvas-g');
-const linesG     = document.getElementById('lines-g');
-const nodesG     = document.getElementById('nodes-g');
-const sidebar    = document.getElementById('sidebar');
-const ctxMenu    = document.getElementById('ctx-menu');
-const loading    = document.getElementById('loading');
-const syncDot    = document.getElementById('sync-dot');
-const syncLabel  = document.getElementById('sync-label');
-const titleInput = document.getElementById('title-input');
-
-// ─── 工具函数 ────────────────────────────────
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
-function toast(msg, type='ok', dur=2500) {
-  const el = document.createElement('div');
-  el.className = 'toast ' + type;
-  el.textContent = msg;
-  document.getElementById('toast-container').appendChild(el);
-  setTimeout(() => el.remove(), dur);
-}
-function hash(obj) { return JSON.stringify(obj); }
-
-// ─── 初始树 ─────────────────────────────────
-function defaultTree() {
-  return {
-    id: uid(), label: '中心主题', note: '', color: ROOT_COLOR,
-    x: 0, y: 0, collapsed: false,
-    children: [
-      { id: uid(), label: '分支一', note: '', color: NODE_COLORS[1], x: 220, y: -90, collapsed: false, children: [] },
-      { id: uid(), label: '分支二', note: '', color: NODE_COLORS[2], x: 220, y:  0,  collapsed: false, children: [] },
-      { id: uid(), label: '分支三', note: '', color: NODE_COLORS[3], x: 220, y:  90, collapsed: false, children: [] },
-    ]
-  };
-}
-
-// ─── GitHub Gist 数据层 ────────────────────────
-const GIST_ID  = '1223d26e1dcb2e19baa80c2c0ea47246';
-const GIST_API = `https://api.github.com/gists/${GIST_ID}`;
-// Token 存在 localStorage，不硬编码在源码中（GitHub 会拒绝含 token 的推送）
-function getToken() { return localStorage.getItem('mindmap_gist_token') || ''; }
-function setToken(t) { localStorage.setItem('mindmap_gist_token', t); }
-
-async function gistGet() {
-  const r = await fetch(GIST_API, {
-    headers: { Authorization: `token ${getToken()}`, Accept: 'application/vnd.github+json' }
-  });
-  if (!r.ok) throw new Error(`Gist GET failed: ${r.status}`);
-  const j = await r.json();
-  const raw = j.files['mindmap_data.json']?.content || '{}';
-  return JSON.parse(raw);
-}
-
-async function gistPatch(data) {
-  const r = await fetch(GIST_API, {
-    method: 'PATCH',
-    headers: {
-      Authorization: `token ${getToken()}`,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      files: { 'mindmap_data.json': { content: JSON.stringify(data) } }
-    })
-  });
-  if (!r.ok) throw new Error(`Gist PATCH failed: ${r.status}`);
-}
-
-async function loadData() {
-  try {
-    const data = await gistGet();
-    tree = data.tree || defaultTree();
-    if (data.title) titleInput.value = data.title;
-    lastSyncHash = hash(tree);
-  } catch(e) {
-    console.error(e);
-    tree = defaultTree();
-    toast('加载数据失败，使用本地默认', 'err');
-  }
-}
-
-async function saveData(silent=false) {
-  setSyncState('syncing');
-  try {
-    await gistPatch({ tree, title: titleInput.value, ts: Date.now() });
-    lastSyncHash = hash(tree);
-    setSyncState('ok');
-    if (!silent) toast('已保存 ✓');
-  } catch(e) {
-    setSyncState('error');
-    toast('保存失败：' + e.message, 'err');
-  }
-}
-
-async function pollSync() {
-  try {
-    const data = await gistGet();
-    const remote = data.tree;
-    if (!remote) return;
-    const remoteHash = hash(remote);
-    if (remoteHash !== lastSyncHash) {
-      tree = remote;
-      lastSyncHash = remoteHash;
-      if (data.title) titleInput.value = data.title;
-      layoutTree();
-      render();
-      toast('已同步他人更新 🔄', 'ok', 1800);
-    }
-  } catch(e) { /* 静默 */ }
-}
-
-// ─── 在线状态（presence，存入 Gist 同一文件）──────────────────────
-async function pushPresence() {
-  try {
-    const data = await gistGet();
-    if (!data.presence) data.presence = {};
-    data.presence[localUser] = { name: localUser, ts: Date.now() };
-    await gistPatch(data);
-  } catch(e) {}
-}
-
-async function pollPresence() {
-  try {
-    const data = await gistGet();
-    const now = Date.now();
-    const active = {};
-    Object.entries(data.presence || {}).forEach(([k, u]) => {
-      if (now - u.ts < 30000) active[k] = u;
-    });
-    collabPresence = active;
-    renderCollabBar();
-  } catch(e) {}
-}
-
-function renderCollabBar() {
-  const bar = document.getElementById('collab-bar');
-  bar.innerHTML = '';
-  const users = Object.values(collabPresence);
-  users.slice(0, 8).forEach(u => {
-    const av = document.createElement('div');
-    av.className = 'collab-avatar';
-    av.title = u.name;
-    av.textContent = u.name.slice(-2);
-    av.style.background = stringColor(u.name);
-    bar.appendChild(av);
-  });
-  if (users.length > 0) {
-    const lbl = document.createElement('span');
-    lbl.style.cssText = 'font-size:11px;color:var(--text2)';
-    lbl.textContent = `${users.length} 人在线`;
-    bar.appendChild(lbl);
-  }
-}
-
-function stringColor(s) {
-  let h = 0;
-  for (let c of s) h = (h * 31 + c.charCodeAt(0)) % NODE_COLORS.length;
-  return NODE_COLORS[h];
-}
-
-function setSyncState(state) {
-  syncDot.className = state === 'ok' ? '' : state;
-  syncLabel.textContent = state === 'ok' ? '已同步' : state === 'syncing' ? '同步中…' : '同步失败';
-}
-
-// ─── 树操作 ─────────────────────────────────
-function findNode(id, node=tree) {
-  if (!node) return null;
-  if (node.id === id) return node;
-  for (const c of (node.children||[])) {
-    const r = findNode(id, c);
-    if (r) return r;
-  }
-  return null;
-}
-
-function findParent(id, node=tree, parent=null) {
-  if (node.id === id) return parent;
-  for (const c of (node.children||[])) {
-    const r = findParent(id, c, node);
-    if (r !== undefined) return r;
-  }
-  return undefined;
-}
-
-function addChild(parentId) {
-  const parent = findNode(parentId);
-  if (!parent) return;
-  const colors = NODE_COLORS;
-  const color = colors[(parent.children||[]).length % colors.length];
-  const child = { id: uid(), label: '新节点', note: '', color, x: 0, y: 0, collapsed: false, children: [] };
-  if (!parent.children) parent.children = [];
-  parent.children.push(child);
-  layoutTree();
-  render();
-  selectedId = child.id;
-  openSidebar(child.id);
-}
-
-function addSibling(nodeId) {
-  if (nodeId === tree.id) { toast('根节点无法添加同级', 'err'); return; }
-  const parent = findParent(nodeId);
-  if (!parent) return;
-  const idx = parent.children.findIndex(c => c.id === nodeId);
-  const color = NODE_COLORS[(idx + 1) % NODE_COLORS.length];
-  const sib = { id: uid(), label: '新节点', note: '', color, x: 0, y: 0, collapsed: false, children: [] };
-  parent.children.splice(idx + 1, 0, sib);
-  layoutTree();
-  render();
-  selectedId = sib.id;
-  openSidebar(sib.id);
-}
-
-function deleteNode(nodeId) {
-  if (nodeId === tree.id) { toast('不能删除根节点', 'err'); return; }
-  const parent = findParent(nodeId);
-  if (!parent) return;
-  parent.children = parent.children.filter(c => c.id !== nodeId);
-  selectedId = null;
-  closeSidebar();
-  layoutTree();
-  render();
-}
-
-function toggleCollapse(nodeId) {
-  const n = findNode(nodeId);
-  if (!n) return;
-  n.collapsed = !n.collapsed;
-  layoutTree();
-  render();
-}
-
-// ─── 布局 ──────────────────────────────────
-const GAP_Y = 20;  // 节点间垂直间隙
-
-// 估算节点渲染高度（布局阶段用，getBBox 在 render 阶段才能用）
-function estimateNodeH(n) {
-  if (n._manualH) return n._manualH;
-  if (n._h) return n._h;  // 已渲染过则用真实值
-  const fontSize = n.fontSize || 13;
-  const PAD_X = 20, PAD_Y = 12;
-  const maxLineW = (n._manualW || 280) - PAD_X * 2;
-  const charW = fontSize * 0.9;  // 中文字符宽度≈字号
-  const charsPerLine = Math.max(1, Math.floor(maxLineW / charW));
-  const lineCount = Math.ceil(n.label.length / charsPerLine) || 1;
-  const lineH = fontSize * 1.5;
-  return lineCount * lineH + PAD_Y * 2;
-}
-
-function estimateNodeW(n) {
-  if (n._manualW) return n._manualW;
-  if (n._w) return n._w;
-  const fontSize = n.fontSize || 13;
-  return Math.min(320, Math.max(90, n.label.length * fontSize * 0.9 + 40));
-}
-
-function nodeSlotH(n) { return estimateNodeH(n) + GAP_Y; }
-function nodeW(n) { return estimateNodeW(n); }
-
-function layoutTree() {
-  const SEP_X = 240;
-
-  function calcTotalH(n) {
-    if (!n || n.collapsed || !n.children || n.children.length === 0) return nodeSlotH(n);
-    return n.children.reduce((s, c) => s + calcTotalH(c), 0);
-  }
-
-  function layout(n, depth, yStart) {
-    n.x = depth * SEP_X;
-    if (!n.children || n.children.length === 0 || n.collapsed) {
-      n.y = yStart + nodeSlotH(n) / 2;
-      return yStart + nodeSlotH(n);
-    }
-    let y = yStart;
-    for (const c of n.children) {
-      y = layout(c, depth + 1, y);
-    }
-    n.y = (yStart + y) / 2;
-    return y;
-  }
-
-  const totalH = calcTotalH(tree);
-  layout(tree, 0, -totalH / 2);
-}
-
-// ─── 渲染 SVG ───────────────────────────────
-function render() {
-  linesG.innerHTML = '';
-  nodesG.innerHTML = '';
-  const svgNS = 'http://www.w3.org/2000/svg';
-
-  function renderNode(n, parentNode) {
-    // 连线
-    if (parentNode) {
-      const line = document.createElementNS(svgNS, 'path');
-      const x1 = parentNode.x + (parentNode._w||120)/2, y1 = parentNode.y;
-      const x2 = n.x - (n._w||120)/2,                    y2 = n.y;
-      const mx = (x1 + x2) / 2;
-      line.setAttribute('d', `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`);
-      line.setAttribute('class', 'conn-line');
-      line.setAttribute('stroke', n.color || NODE_COLORS[0]);
-      linesG.appendChild(line);
+    // Utils
+    function generateId() {
+      return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
     }
 
-    // 节点组
-    const g = document.createElementNS(svgNS, 'g');
-    g.setAttribute('class', 'node-group' + (selectedId === n.id ? ' selected' : ''));
-    g.setAttribute('transform', `translate(${n.x - (n._w||120)/2},${n.y - (n._h||38)/2})`);
-    g.dataset.id = n.id;
-
-    // 背景矩形
-    // 先用占位尺寸，文字渲染后会覆盖（SVG 无法预知尺寸，用估算值）
-    const _nw = n._w || 120, _nh = n._h || 38;
-    const rect = document.createElementNS(svgNS, 'rect');
-    rect.setAttribute('class', 'node-rect');
-    rect.setAttribute('width', _nw);
-    rect.setAttribute('height', _nh);
-    rect.setAttribute('rx', 10);
-    rect.setAttribute('fill', n.color || NODE_COLORS[0]);
-    rect.setAttribute('stroke', selectedId === n.id ? '#fff' : 'transparent');
-    rect.setAttribute('stroke-width', '2.5');
-    g.appendChild(rect);
-
-    // 折叠指示器（可点击）
-    if (n.children && n.children.length > 0) {
-      const collapseBtn = document.createElementNS(svgNS, 'g');
-      collapseBtn.setAttribute('class', 'collapse-btn');
-      collapseBtn.style.cursor = 'pointer';
-
-      const ci = document.createElementNS(svgNS, 'circle');
-      ci.setAttribute('cx', (n._w || 120));
-      ci.setAttribute('cy', (n._h || 38) / 2);
-      ci.setAttribute('r', 9);
-      ci.setAttribute('fill', 'rgba(0,0,0,.5)');
-      collapseBtn.appendChild(ci);
-
-      const ct = document.createElementNS(svgNS, 'text');
-      ct.setAttribute('x', (n._w || 120));
-      ct.setAttribute('y', (n._h || 38) / 2 + 4);
-      ct.setAttribute('text-anchor', 'middle');
-      ct.setAttribute('fill', '#fff');
-      ct.setAttribute('font-size', '12');
-      ct.setAttribute('font-weight', 'bold');
-      ct.setAttribute('pointer-events', 'none');
-      ct.textContent = n.collapsed ? '+' : '−';
-      collapseBtn.appendChild(ct);
-
-      // 关键：单独绑定点击，阻止冒泡避免触发 selectNode
-      collapseBtn.addEventListener('click', e => {
-        e.stopPropagation();
-        toggleCollapse(n.id);
-      });
-      collapseBtn.addEventListener('mousedown', e => e.stopPropagation()); // 阻止触发拖动
-      g.appendChild(collapseBtn);
+    function showToast(msg) {
+      const toast = document.createElement('div');
+      toast.className = 'toast';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 2500);
     }
 
-    // ── 文字渲染（先挂载到 DOM，再用 getBBox 获取真实尺寸）──
-    const fontSize  = n.fontSize  || (n === tree ? 15 : 13);
-    const fontColor = n.fontColor || '#ffffff';
-    const PAD_X = 20, PAD_Y = 12;
-    const MAX_LINE_W = (n._manualW || 280) - PAD_X * 2;  // 用户手动调宽时尊重
-
-    // 先把文字加入 nodesG（需要在 SVG 中才能 getBBox）
-    // 用单行 text 先测量每个字的真实宽度，再软换行
-    const probe = document.createElementNS(svgNS, 'text');
-    probe.setAttribute('font-size', fontSize);
-    probe.setAttribute('font-family', "PingFang SC,Microsoft YaHei,sans-serif");
-    probe.setAttribute('visibility', 'hidden');
-    probe.textContent = n.label;
-    nodesG.appendChild(probe);
-    let probeW = 0;
-    try { probeW = probe.getBBox().width; } catch(e) { probeW = n.label.length * fontSize * 0.7; }
-    nodesG.removeChild(probe);
-
-    // 按真实宽度软换行（逐字累加）
-    const LINE_H = fontSize * 1.5;
-    const lines = [];
-    let curLine = '';
-    let curW = 0;
-    const charW = probeW / (n.label.length || 1);
-    for (const ch of n.label) {
-      const cw = charW;
-      if (curW + cw > MAX_LINE_W && curLine) {
-        lines.push(curLine); curLine = ch; curW = cw;
+    function showLoading(show) {
+      let overlay = document.querySelector('.loading-overlay');
+      if (show) {
+        if (!overlay) {
+          overlay = document.createElement('div');
+          overlay.className = 'loading-overlay';
+          overlay.innerHTML = '<div class="spinner"></div>';
+          document.body.appendChild(overlay);
+        }
       } else {
-        curLine += ch; curW += cw;
+        if (overlay) overlay.remove();
       }
     }
-    if (curLine) lines.push(curLine);
-    if (!lines.length) lines.push('');
 
-    // 估算节点宽高（用于占位矩形，getBBox 后再修正）
-    const estW = n._manualW || Math.min(320, Math.max(90, probeW + PAD_X * 2));
-    const estH = n._manualH || (lines.length * LINE_H + PAD_Y * 2);
-
-    // 更新缓存
-    n._w = estW; n._h = estH;
-
-    // 文字元素（多行 tspan）
-    const txt = document.createElementNS(svgNS, 'text');
-    txt.setAttribute('class', 'node-text' + (n === tree ? ' root-text' : ''));
-    txt.setAttribute('x', estW / 2);
-    txt.setAttribute('y', PAD_Y + fontSize);
-    txt.setAttribute('text-anchor', 'middle');
-    txt.setAttribute('font-size', fontSize);
-    txt.setAttribute('font-family', "PingFang SC,Microsoft YaHei,sans-serif");
-    txt.setAttribute('fill', fontColor);
-    txt.setAttribute('pointer-events', 'none');
-    lines.forEach((line, i) => {
-      const tspan = document.createElementNS(svgNS, 'tspan');
-      tspan.setAttribute('x', estW / 2);
-      tspan.setAttribute('dy', i === 0 ? 0 : LINE_H);
-      tspan.textContent = line;
-      txt.appendChild(tspan);
-    });
-    g.appendChild(txt);
-
-    // ── getBBox 修正矩形真实尺寸 ──────────────────────────────────────
-    nodesG.appendChild(g);  // 需要先在 DOM 里才能 getBBox
-    let realW = estW, realH = estH;
-    try {
-      const bb = txt.getBBox();
-      realW = n._manualW || Math.max(90, bb.width  + PAD_X * 2);
-      realH = n._manualH || Math.max(32, bb.height + PAD_Y * 2);
-    } catch(e) {}
-    n._w = realW; n._h = realH;
-
-    // 回填矩形和文字 x 坐标
-    rect.setAttribute('width',  realW);
-    rect.setAttribute('height', realH);
-    txt.setAttribute('x', realW / 2);
-    txt.querySelectorAll('tspan').forEach(ts => ts.setAttribute('x', realW / 2));
-    g.setAttribute('transform', `translate(${n.x - realW/2},${n.y - realH/2})`);
-
-    // 折叠按钮位置修正（此时已知真实尺寸）
-    const cbg = g.querySelector('.collapse-btn');
-    if (cbg) {
-      const cCircle = cbg.querySelector('circle');
-      const cText   = cbg.querySelector('text');
-      if (cCircle) { cCircle.setAttribute('cx', realW); cCircle.setAttribute('cy', realH / 2); }
-      if (cText)   { cText.setAttribute('x', realW);   cText.setAttribute('y', realH / 2 + 4); }
+    function createNode(text = '新节点') {
+      return {
+        id: generateId(),
+        label: text,
+        note: '',
+        bg: COLORS[Math.floor(Math.random() * COLORS.length)],
+        color: '#ffffff',
+        fontsize: 14,
+        children: [],
+        collapsed: false,
+        x: 0,
+        y: 0,
+        _w: 0,
+        _h: 0
+      };
     }
 
-    // 备注小点
-    if (n.note) {
-      const nd = document.createElementNS(svgNS, 'circle');
-      nd.setAttribute('cx', realW - 6);
-      nd.setAttribute('cy', 6);
-      nd.setAttribute('r', 4);
-      nd.setAttribute('fill', '#ffb74d');
-      g.appendChild(nd);
+    function findNode(node, id) {
+      if (node.id === id) return node;
+      for (let child of node.children) {
+        const found = findNode(child, id);
+        if (found) return found;
+      }
+      return null;
     }
 
-    // 拖拽调整大小手柄（右下角）
-    const resizeHandle = document.createElementNS(svgNS, 'g');
-    resizeHandle.setAttribute('class', 'resize-handle');
-    resizeHandle.style.cursor = 'nwse-resize';
-    const rr = document.createElementNS(svgNS, 'rect');
-    rr.setAttribute('x', realW - 12); rr.setAttribute('y', realH - 12);
-    rr.setAttribute('width', 12); rr.setAttribute('height', 12);
-    rr.setAttribute('rx', 3);
-    rr.setAttribute('fill', 'rgba(255,255,255,0.25)');
-    resizeHandle.appendChild(rr);
-    const rl = document.createElementNS(svgNS, 'text');
-    rl.setAttribute('x', realW - 6); rl.setAttribute('y', realH - 2);
-    rl.setAttribute('text-anchor', 'middle');
-    rl.setAttribute('font-size', '8');
-    rl.setAttribute('fill', 'rgba(255,255,255,0.6)');
-    rl.setAttribute('pointer-events', 'none');
-    rl.textContent = '⤡';
-    resizeHandle.appendChild(rl);
-
-    // 拖拽手柄事件
-    resizeHandle.addEventListener('mousedown', e => {
-      e.stopPropagation();
-      const startX = e.clientX, startY = e.clientY;
-      const startW = realW, startH = realH;
-      function onMove(ev) {
-        const dw = (ev.clientX - startX) / transform.scale;
-        const dh = (ev.clientY - startY) / transform.scale;
-        n._manualW = Math.max(60, startW + dw);
-        n._manualH = Math.max(28, startH + dh);
-        n._w = n._manualW; n._h = n._manualH;
-        render();
+    function findParent(node, id, parent = null) {
+      if (node.id === id) return parent;
+      for (let child of node.children) {
+        const found = findParent(child, id, node);
+        if (found) return found;
       }
-      function onUp() {
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
-        saveData(true);
-      }
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
-    });
-    resizeHandle.addEventListener('click', e => e.stopPropagation());
-    g.appendChild(resizeHandle);
-
-    // 事件
-    g.addEventListener('click', e => { e.stopPropagation(); selectNode(n.id); });
-    g.addEventListener('dblclick', e => { e.stopPropagation(); openSidebar(n.id); });
-    g.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showCtxMenu(e, n.id); });
-
-    // 拖动节点（整个分支跟随）
-    let dragO = null;
-    g.addEventListener('mousedown', e => {
-      if (e.button !== 0) return;
-      e.stopPropagation();
-      dragNodeId = n.id;
-      // 收集当前节点 + 所有子孙节点的初始坐标快照
-      const snapshot = {};
-      function snap(node) {
-        snapshot[node.id] = { x: node.x, y: node.y };
-        (node.children || []).forEach(snap);
-      }
-      snap(n);
-      dragO = { mx: e.clientX, my: e.clientY, snapshot };
-    });
-    window.addEventListener('mousemove', ev => {
-      if (dragNodeId !== n.id || !dragO) return;
-      const dx = (ev.clientX - dragO.mx) / transform.scale;
-      const dy = (ev.clientY - dragO.my) / transform.scale;
-      // 整个分支整体偏移
-      function moveSubtree(node) {
-        const orig = dragO.snapshot[node.id];
-        if (orig) { node.x = orig.x + dx; node.y = orig.y + dy; }
-        (node.children || []).forEach(moveSubtree);
-      }
-      moveSubtree(n);
-      render();
-    });
-    window.addEventListener('mouseup', () => {
-      if (dragNodeId === n.id) {
-        dragNodeId = null;
-        dragO = null;
-        render();
-      }
-    });
-
-    // 子节点
-    if (!n.collapsed) {
-      for (const c of (n.children || [])) renderNode(c, n);
+      return null;
     }
-  }
 
-  renderNode(tree, null);
-  updateMinimap();
-
-  // ── 尺寸收敛：若真实高度与布局估算差距 >10px，触发一次重新布局 ──
-  if (!render._converging) {
-    let needRelayout = false;
-    function checkConverge(n) {
-      const est = estimateNodeH(n);
-      const real = n._h || est;
-      if (Math.abs(real - est) > 10) needRelayout = true;
-      if (!n.collapsed) (n.children || []).forEach(checkConverge);
+    function getSubtreeNodes(node) {
+      const nodes = [node];
+      for (let child of node.children) {
+        nodes.push(...getSubtreeNodes(child));
+      }
+      return nodes;
     }
-    checkConverge(tree);
-    if (needRelayout) {
-      render._converging = true;
-      requestAnimationFrame(() => {
+
+    function deepCloneNode(node) {
+      const clone = JSON.parse(JSON.stringify(node));
+      function regenerateIds(n) {
+        n.id = generateId();
+        n.children.forEach(regenerateIds);
+      }
+      regenerateIds(clone);
+      return clone;
+    }
+
+    // Layout
+    const SEP_X = 200;
+    const SEP_Y = 20;
+
+    function layoutTree() {
+      if (!tree) return;
+      
+      function measureNode(node) {
+        const tempText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        tempText.textContent = node.label;
+        tempText.setAttribute('font-size', node.fontsize || 14);
+        document.getElementById('svg-canvas').appendChild(tempText);
+        const bbox = tempText.getBBox();
+        tempText.remove();
+        
+        const w = Math.max(80, bbox.width + 32);
+        const h = bbox.height + 20;
+        node._w = w;
+        node._h = h;
+      }
+
+      function layout(node, x, y) {
+        measureNode(node);
+        node.x = x;
+        node.y = y;
+        
+        if (node.collapsed || node.children.length === 0) return;
+        
+        let childY = y;
+        const totalHeight = node.children.reduce((sum, c) => sum + c._h, 0) + (node.children.length - 1) * SEP_Y;
+        childY = y - totalHeight / 2 + node._h / 2;
+        
+        for (let child of node.children) {
+          layout(child, x + SEP_X, childY);
+          childY += child._h + SEP_Y;
+        }
+      }
+
+      layout(tree, 0, 0);
+
+      // Check if re-layout needed
+      function checkHeight(node) {
+        const tempText = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        tempText.textContent = node.label;
+        tempText.setAttribute('font-size', node.fontsize || 14);
+        document.getElementById('svg-canvas').appendChild(tempText);
+        const bbox = tempText.getBBox();
+        tempText.remove();
+        
+        const actualH = bbox.height + 20;
+        if (Math.abs(actualH - node._h) > 10) {
+          node._h = actualH;
+          return true;
+        }
+        return node.children.some(checkHeight);
+      }
+
+      if (checkHeight(tree)) {
+        requestAnimationFrame(() => layout(tree, 0, 0));
+      }
+    }
+
+    // Render
+    function render() {
+      if (!tree) return;
+      
+      const svg = document.getElementById('svg-canvas');
+      svg.innerHTML = '';
+      
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.id = 'main-group';
+      svg.appendChild(g);
+
+      // Background image
+      if (bgImage) {
+        const img = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+        img.setAttribute('href', bgImage.url);
+        img.setAttribute('x', bgImage.x);
+        img.setAttribute('y', bgImage.y);
+        img.setAttribute('width', bgImage.w);
+        img.setAttribute('height', bgImage.h);
+        img.setAttribute('opacity', bgImage.opacity);
+        g.appendChild(img);
+      }
+
+      function renderNode(node, parent) {
+        const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        group.setAttribute('data-id', node.id);
+        group.classList.add('node');
+        
+        // Draw connection line
+        if (parent) {
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          const px = parent.x + parent._w;
+          const py = parent.y + parent._h / 2;
+          const cx = node.x;
+          const cy = node.y + node._h / 2;
+          const mx = (px + cx) / 2;
+          path.setAttribute('d', `M${px},${py} C${mx},${py} ${mx},${cy} ${cx},${cy}`);
+          path.setAttribute('stroke', '#6b7499');
+          path.setAttribute('stroke-width', '2');
+          path.setAttribute('fill', 'none');
+          g.appendChild(path);
+        }
+
+        // Node rect
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', node.x);
+        rect.setAttribute('y', node.y);
+        rect.setAttribute('width', node._w);
+        rect.setAttribute('height', node._h);
+        rect.setAttribute('rx', '8');
+        rect.setAttribute('fill', node.bg);
+        rect.setAttribute('stroke', selectedNode === node.id ? 'var(--accent)' : 'transparent');
+        rect.setAttribute('stroke-width', '2');
+        group.appendChild(rect);
+
+        // Node text
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', node.x + node._w / 2);
+        text.setAttribute('y', node.y + node._h / 2);
+        text.setAttribute('text-anchor', 'middle');
+        text.setAttribute('dominant-baseline', 'middle');
+        text.setAttribute('fill', node.color);
+        text.setAttribute('font-size', node.fontsize);
+        text.textContent = node.label;
+        group.appendChild(text);
+
+        // Collapse button
+        if (node.children.length > 0) {
+          const btn = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          btn.setAttribute('transform', `translate(${node.x + node._w + 5}, ${node.y + node._h / 2 - 8})`);
+          btn.style.cursor = 'pointer';
+          
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('r', '8');
+          circle.setAttribute('fill', '#fff');
+          circle.setAttribute('stroke', '#6b7499');
+          btn.appendChild(circle);
+          
+          const symbol = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          symbol.setAttribute('text-anchor', 'middle');
+          symbol.setAttribute('dominant-baseline', 'middle');
+          symbol.setAttribute('font-size', '12');
+          symbol.textContent = node.collapsed ? '+' : '−';
+          btn.appendChild(symbol);
+          
+          btn.addEventListener('mousedown', (e) => {
+            e.stopPropagation();
+            toggleCollapse(node.id);
+          });
+          group.appendChild(btn);
+        }
+
+        // Events
+        group.addEventListener('dblclick', (e) => {
+          e.stopPropagation();
+          selectedNode = node.id;
+          openSidebar(node);
+          render();
+        });
+        
+        group.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          selectedNode = node.id;
+          showContextMenu(e.clientX, e.clientY, node);
+          render();
+        });
+        
+        group.addEventListener('mousedown', (e) => {
+          if (e.button !== 0) return;
+          selectedNode = node.id;
+          startDrag(e, node);
+          render();
+        });
+
+        g.appendChild(group);
+
+        if (!node.collapsed) {
+          node.children.forEach(child => renderNode(child, node));
+        }
+      }
+
+      renderNode(tree, null);
+      updateMinimap();
+    }
+
+    function updateMinimap() {
+      const minimapSvg = document.getElementById('minimap-svg');
+      minimapSvg.innerHTML = '';
+      
+      if (!tree) return;
+      
+      const nodes = getSubtreeNodes(tree);
+      if (nodes.length === 0) return;
+      
+      const minX = Math.min(...nodes.map(n => n.x));
+      const maxX = Math.max(...nodes.map(n => n.x + n._w));
+      const minY = Math.min(...nodes.map(n => n.y));
+      const maxY = Math.max(...nodes.map(n => n.y + n._h));
+      
+      const padding = 20;
+      const viewWidth = maxX - minX + padding * 2;
+      const viewHeight = maxY - minY + padding * 2;
+      
+      minimapSvg.setAttribute('viewBox', `${minX - padding} ${minY - padding} ${viewWidth} ${viewHeight}`);
+      
+      nodes.forEach(node => {
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', node.x);
+        rect.setAttribute('y', node.y);
+        rect.setAttribute('width', node._w);
+        rect.setAttribute('height', node._h);
+        rect.setAttribute('fill', node.bg);
+        minimapSvg.appendChild(rect);
+      });
+    }
+
+    function toggleCollapse(id) {
+      const node = findNode(tree, id);
+      if (node) {
+        node.collapsed = !node.collapsed;
         layoutTree();
         render();
-        render._converging = false;
+      }
+    }
+
+    function openSidebar(node) {
+      const sidebar = document.getElementById('sidebar');
+      sidebar.classList.add('open');
+      
+      document.getElementById('node-label').value = node.label;
+      document.getElementById('node-note').value = node.note || '';
+      document.getElementById('node-fontsize').value = node.fontsize || 14;
+      
+      // Render color palettes
+      const bgColors = document.getElementById('bg-colors');
+      bgColors.innerHTML = '';
+      COLORS.forEach(color => {
+        const dot = document.createElement('div');
+        dot.className = 'color-dot' + (node.bg === color ? ' active' : '');
+        dot.style.background = color;
+        dot.onclick = () => {
+          node.bg = color;
+          render();
+          openSidebar(node);
+        };
+        bgColors.appendChild(dot);
+      });
+      
+      const textColors = document.getElementById('text-colors');
+      textColors.innerHTML = '';
+      TEXT_COLORS.forEach(color => {
+        const dot = document.createElement('div');
+        dot.className = 'color-dot' + (node.color === color ? ' active' : '');
+        dot.style.background = color;
+        dot.onclick = () => {
+          node.color = color;
+          render();
+          openSidebar(node);
+        };
+        textColors.appendChild(dot);
       });
     }
-  }
-}
 
-function renderFast() { render(); }
-
-// ─── 选中 ───────────────────────────────────
-function selectNode(id) {
-  selectedId = id;
-  render();
-  // 更新侧栏（如果已打开）
-  if (sidebar.classList.contains('open')) {
-    const n = findNode(id);
-    if (n) {
-      document.getElementById('node-label').value = n.label;
-      document.getElementById('node-note').value = n.note || '';
-      document.getElementById('node-fontsize').value = n.fontSize || 13;
-      updateColorPicker(n.color);
-      updateFontColorPicker(n.fontColor || '#ffffff');
+    // Drag
+    let dragState = null;
+    
+    function startDrag(e, node) {
+      e.stopPropagation();
+      const subtreeNodes = getSubtreeNodes(node);
+      const snapshots = subtreeNodes.map(n => ({ id: n.id, x: n.x, y: n.y }));
+      
+      dragState = {
+        node,
+        startX: e.clientX,
+        startY: e.clientY,
+        snapshots
+      };
+      
+      document.getElementById('svg-canvas').classList.add('dragging');
     }
-  }
-}
 
-// ─── 侧栏 ───────────────────────────────────
-function openSidebar(id) {
-  selectedId = id;
-  const n = findNode(id);
-  if (!n) return;
-  document.getElementById('node-label').value = n.label;
-  document.getElementById('node-note').value = n.note || '';
-  document.getElementById('node-fontsize').value = n.fontSize || (n === tree ? 15 : 13);
-  updateColorPicker(n.color);
-  updateFontColorPicker(n.fontColor || '#ffffff');
-  sidebar.classList.add('open');
-  document.getElementById('node-label').focus();
-  render();
-}
-function closeSidebar() { sidebar.classList.remove('open'); }
-
-const FONT_COLORS = ['#ffffff','#1a1d2e','#6c63ff','#ff6584','#2da872','#f59e0b','#42a5f5','#ef5350'];
-
-function buildColorPicker() {
-  const row = document.getElementById('color-picker');
-  NODE_COLORS.forEach(c => {
-    const d = document.createElement('div');
-    d.className = 'color-dot';
-    d.style.background = c;
-    d.dataset.color = c;
-    d.dataset.group = 'bg';
-    d.addEventListener('click', () => {
-      document.querySelectorAll('.color-dot[data-group="bg"]').forEach(x => x.classList.remove('active'));
-      d.classList.add('active');
+    document.addEventListener('mousemove', (e) => {
+      if (!dragState) return;
+      
+      const svg = document.getElementById('svg-canvas');
+      const mainGroup = document.getElementById('main-group');
+      const transform = mainGroup.getAttribute('transform');
+      let scale = 1;
+      if (transform) {
+        const match = transform.match(/scale\(([^)]+)\)/);
+        if (match) scale = parseFloat(match[1]);
+      }
+      
+      const dx = (e.clientX - dragState.startX) / scale;
+      const dy = (e.clientY - dragState.startY) / scale;
+      
+      dragState.snapshots.forEach(snap => {
+        const node = findNode(tree, snap.id);
+        if (node) {
+          node.x = snap.x + dx;
+          node.y = snap.y + dy;
+        }
+      });
+      
+      render();
     });
-    row.appendChild(d);
-  });
-}
-function buildFontColorPicker() {
-  const row = document.getElementById('font-color-picker');
-  if (!row) return;
-  FONT_COLORS.forEach(c => {
-    const d = document.createElement('div');
-    d.className = 'color-dot';
-    d.dataset.color = c;
-    d.dataset.group = 'font';
-    d.style.background = c;
-    d.style.border = '2px solid #dde1f0';
-    d.addEventListener('click', () => {
-      document.querySelectorAll('.color-dot[data-group="font"]').forEach(x => x.classList.remove('active'));
-      d.classList.add('active');
+
+    document.addEventListener('mouseup', () => {
+      if (dragState) {
+        document.getElementById('svg-canvas').classList.remove('dragging');
+        dragState = null;
+      }
     });
-    row.appendChild(d);
-  });
-}
-function updateColorPicker(color) {
-  document.querySelectorAll('.color-dot[data-group="bg"]').forEach(d => {
-    d.classList.toggle('active', d.dataset.color === color);
-  });
-}
-function updateFontColorPicker(color) {
-  document.querySelectorAll('.color-dot[data-group="font"]').forEach(d => {
-    d.classList.toggle('active', d.dataset.color === color);
-  });
-}
-function getPickedColor() {
-  const a = document.querySelector('.color-dot[data-group="bg"].active');
-  return a ? a.dataset.color : NODE_COLORS[0];
-}
-function getPickedFontColor() {
-  const a = document.querySelector('.color-dot[data-group="font"].active');
-  return a ? a.dataset.color : '#ffffff';
-}
 
-document.getElementById('sidebar-save').addEventListener('click', () => {
-  if (!selectedId) return;
-  const n = findNode(selectedId);
-  if (!n) return;
-  n.label     = document.getElementById('node-label').value.trim() || n.label;
-  n.note      = document.getElementById('node-note').value.trim();
-  n.color     = getPickedColor();
-  n.fontSize  = parseInt(document.getElementById('node-fontsize').value) || 13;
-  n.fontColor = getPickedFontColor();
-  // 字体改变时清除手动尺寸缓存，让 getBBox 重新计算
-  n._w = null; n._h = null; n._manualW = null; n._manualH = null;
-  render();
-  closeSidebar();
-  saveData(true);
-});
-document.getElementById('sidebar-close').addEventListener('click', closeSidebar);
+    // Pan & Zoom
+    let panZoom = { x: 0, y: 0, scale: 1 };
+    
+    function applyTransform() {
+      const mainGroup = document.getElementById('main-group');
+      if (mainGroup) {
+        mainGroup.setAttribute('transform', `translate(${panZoom.x}, ${panZoom.y}) scale(${panZoom.scale})`);
+      }
+    }
 
-// ─── 右键菜单 ───────────────────────────────
-// ─── 剪贴板 ───────────────────────────────────
-let clipboard = null;
-
-function deepClone(node) { return JSON.parse(JSON.stringify(node)); }
-
-function regenIds(node) {
-  node.id = uid();
-  (node.children || []).forEach(regenIds);
-  return node;
-}
-
-function cutBranch(nodeId) {
-  if (nodeId === tree.id) { toast('根节点不能剪切', 'err'); return; }
-  const node = findNode(nodeId);
-  if (!node) return;
-  clipboard = deepClone(node);
-  deleteNode(nodeId);
-  updatePasteItem();
-  const cnt = countNodes(clipboard);
-  toast('✂️ 已剪切「' + clipboard.label + '」及 ' + cnt + ' 个节点');
-}
-
-function pasteBranch(targetId) {
-  if (!clipboard) { toast('剪贴板为空，请先剪切一个分支', 'err'); return; }
-  const target = findNode(targetId);
-  if (!target) return;
-  const newBranch = regenIds(deepClone(clipboard));
-  if (!target.children) target.children = [];
-  target.children.push(newBranch);
-  layoutTree();
-  render();
-  saveData(true);
-  toast('📋 已将「' + newBranch.label + '」粘贴到「' + target.label + '」');
-}
-
-function updatePasteItem() {
-  const pasteEl = document.getElementById('ctx-paste');
-  if (!pasteEl) return;
-  pasteEl.style.opacity = clipboard ? '1' : '0.4';
-  pasteEl.style.pointerEvents = clipboard ? 'auto' : 'none';
-}
-
-let ctxNodeId = null;
-function showCtxMenu(e, nodeId) {
-  ctxNodeId = nodeId;
-  selectedId = nodeId;
-  render();
-  updatePasteItem();
-  ctxMenu.style.display = 'block';
-  ctxMenu.style.left = e.clientX + 'px';
-  ctxMenu.style.top  = e.clientY + 'px';
-}
-document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
-document.getElementById('ctx-add-child').addEventListener('click', () => addChild(ctxNodeId));
-document.getElementById('ctx-add-sibling').addEventListener('click', () => addSibling(ctxNodeId));
-document.getElementById('ctx-edit').addEventListener('click', () => openSidebar(ctxNodeId));
-document.getElementById('ctx-collapse').addEventListener('click', () => { toggleCollapse(ctxNodeId); render(); });
-document.getElementById('ctx-delete').addEventListener('click', () => deleteNode(ctxNodeId));
-document.getElementById('ctx-cut').addEventListener('click', () => cutBranch(ctxNodeId));
-document.getElementById('ctx-paste').addEventListener('click', () => pasteBranch(ctxNodeId));
-
-// ─── 画布平移 & 缩放 ─────────────────────────
-let panStart = null;
-canvasWrap.addEventListener('mousedown', e => {
-  if (e.button === 1 || (e.button === 0 && !e.target.closest('.node-group'))) {
-    panStart = { mx: e.clientX, my: e.clientY, tx: transform.x, ty: transform.y };
-    canvasWrap.classList.add('grabbing');
-  }
-});
-window.addEventListener('mousemove', e => {
-  if (!panStart || dragNodeId) return;
-  transform.x = panStart.tx + (e.clientX - panStart.mx);
-  transform.y = panStart.ty + (e.clientY - panStart.my);
-  applyTransform();
-});
-window.addEventListener('mouseup', () => { panStart = null; canvasWrap.classList.remove('grabbing'); });
-
-canvasWrap.addEventListener('wheel', e => {
-  e.preventDefault();
-  if (e.ctrlKey) {
-    // 双指捏合 / Ctrl+滚轮 → 缩放
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const rect = canvasWrap.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    transform.x = mx - (mx - transform.x) * delta;
-    transform.y = my - (my - transform.y) * delta;
-    transform.scale = Math.min(3, Math.max(0.2, transform.scale * delta));
-  } else {
-    // 双指滑动 / 普通滚轮 → 平移
-    transform.x -= e.deltaX;
-    transform.y -= e.deltaY;
-  }
-  applyTransform();
-}, { passive: false });
-
-function applyTransform() {
-  canvasG.setAttribute('transform',
-    `translate(${transform.x},${transform.y}) scale(${transform.scale})`);
-  updateMinimap();
-}
-
-function fitView() {
-  const rect = canvasWrap.getBoundingClientRect();
-  transform.scale = 1;
-  transform.x = rect.width / 2;
-  transform.y = rect.height / 2;
-  applyTransform();
-}
-
-// ─── 按钮 ───────────────────────────────────
-document.getElementById('btn-add-child').addEventListener('click', () => {
-  if (selectedId) addChild(selectedId); else toast('请先选择一个节点');
-});
-document.getElementById('btn-add-sibling').addEventListener('click', () => {
-  if (selectedId) addSibling(selectedId); else toast('请先选择一个节点');
-});
-document.getElementById('btn-delete').addEventListener('click', () => {
-  if (selectedId) deleteNode(selectedId); else toast('请先选择一个节点');
-});
-document.getElementById('btn-collapse').addEventListener('click', () => {
-  if (selectedId) { toggleCollapse(selectedId); render(); } else toast('请先选择一个节点');
-});
-document.getElementById('btn-fit').addEventListener('click', fitView);
-document.getElementById('btn-zoom-in').addEventListener('click', () => {
-  transform.scale = Math.min(3, transform.scale * 1.2); applyTransform();
-});
-document.getElementById('btn-zoom-out').addEventListener('click', () => {
-  transform.scale = Math.max(0.2, transform.scale * 0.8); applyTransform();
-});
-document.getElementById('btn-save').addEventListener('click', () => saveData());
-document.getElementById('btn-share').addEventListener('click', () => {
-  navigator.clipboard.writeText(location.href).then(() => toast('链接已复制 ✓')).catch(() => toast('复制失败，请手动复制链接', 'err'));
-});
-document.getElementById('btn-export').addEventListener('click', exportSVG);
-titleInput.addEventListener('change', () => saveData(true));
-
-// ─── 键盘快捷键 ─────────────────────────────
-document.addEventListener('keydown', e => {
-  if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return;
-  switch(e.key) {
-    case 'Tab':
+    document.getElementById('svg-canvas').addEventListener('wheel', (e) => {
       e.preventDefault();
-      if (selectedId) addChild(selectedId);
-      break;
-    case 'Enter':
+      
+      if (e.ctrlKey) {
+        // Zoom
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        panZoom.scale *= delta;
+        panZoom.scale = Math.max(0.1, Math.min(3, panZoom.scale));
+      } else {
+        // Pan
+        panZoom.x -= e.deltaX;
+        panZoom.y -= e.deltaY;
+      }
+      
+      applyTransform();
+      updateMinimap();
+    });
+
+    let isPanning = false;
+    let panStart = { x: 0, y: 0 };
+    
+    document.getElementById('svg-canvas').addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'svg') {
+        isPanning = true;
+        panStart = { x: e.clientX, y: e.clientY };
+        document.getElementById('svg-canvas').classList.add('dragging');
+      }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isPanning) {
+        panZoom.x += e.clientX - panStart.x;
+        panZoom.y += e.clientY - panStart.y;
+        panStart = { x: e.clientX, y: e.clientY };
+        applyTransform();
+        updateMinimap();
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isPanning) {
+        isPanning = false;
+        document.getElementById('svg-canvas').classList.remove('dragging');
+      }
+    });
+
+    function fitView() {
+      if (!tree) return;
+      
+      const nodes = getSubtreeNodes(tree);
+      if (nodes.length === 0) return;
+      
+      const svg = document.getElementById('svg-canvas');
+      const rect = svg.getBoundingClientRect();
+      
+      const minX = Math.min(...nodes.map(n => n.x));
+      const maxX = Math.max(...nodes.map(n => n.x + n._w));
+      const minY = Math.min(...nodes.map(n => n.y));
+      const maxY = Math.max(...nodes.map(n => n.y + n._h));
+      
+      const padding = 100;
+      const viewWidth = maxX - minX + padding * 2;
+      const viewHeight = maxY - minY + padding * 2;
+      
+      const scaleX = rect.width / viewWidth;
+      const scaleY = rect.height / viewHeight;
+      const scale = Math.min(scaleX, scaleY, 1);
+      
+      panZoom.scale = scale;
+      panZoom.x = rect.width / 2 - (minX + (maxX - minX) / 2) * scale;
+      panZoom.y = rect.height / 2 - (minY + (maxY - minY) / 2) * scale;
+      
+      applyTransform();
+    }
+
+    // Context Menu
+    let contextMenu = null;
+    
+    function showContextMenu(x, y, node) {
+      hideContextMenu();
+      
+      contextMenu = document.createElement('div');
+      contextMenu.className = 'context-menu';
+      contextMenu.style.left = x + 'px';
+      contextMenu.style.top = y + 'px';
+      
+      const items = [
+        { label: '添加子节点', action: () => addChild(node.id) },
+        { label: '添加同级', action: () => addSibling(node.id) },
+        { label: '编辑', action: () => openSidebar(node) },
+        { label: node.collapsed ? '展开' : '折叠', action: () => toggleCollapse(node.id) },
+        { label: '剪切分支', action: () => cutBranch(node.id) },
+        { label: '粘贴为子节点', action: () => pasteAsChild(node.id) },
+        { label: '删除', action: () => deleteNode(node.id) }
+      ];
+      
+      items.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'context-menu-item';
+        div.textContent = item.label;
+        div.onclick = () => {
+          item.action();
+          hideContextMenu();
+        };
+        contextMenu.appendChild(div);
+      });
+      
+      document.body.appendChild(contextMenu);
+    }
+
+    function hideContextMenu() {
+      if (contextMenu) {
+        contextMenu.remove();
+        contextMenu = null;
+      }
+    }
+
+    document.addEventListener('click', hideContextMenu);
+
+    // Node Operations
+    function addChild(parentId) {
+      const parent = findNode(tree, parentId);
+      if (parent) {
+        const newNode = createNode('新节点');
+        parent.children.push(newNode);
+        parent.collapsed = false;
+        layoutTree();
+        render();
+      }
+    }
+
+    function addSibling(nodeId) {
+      const parent = findParent(tree, nodeId);
+      if (parent) {
+        const newNode = createNode('新节点');
+        const idx = parent.children.findIndex(c => c.id === nodeId);
+        parent.children.splice(idx + 1, 0, newNode);
+        layoutTree();
+        render();
+      }
+    }
+
+    function deleteNode(nodeId) {
+      if (nodeId === tree.id) return;
+      const parent = findParent(tree, nodeId);
+      if (parent) {
+        parent.children = parent.children.filter(c => c.id !== nodeId);
+        layoutTree();
+        render();
+      }
+    }
+
+    function cutBranch(nodeId) {
+      if (nodeId === tree.id) return;
+      const node = findNode(tree, nodeId);
+      if (node) {
+        clipboard = deepCloneNode(node);
+        deleteNode(nodeId);
+      }
+    }
+
+    function pasteAsChild(parentId) {
+      if (!clipboard) return;
+      const parent = findNode(tree, parentId);
+      if (parent) {
+        const newNode = deepCloneNode(clipboard);
+        parent.children.push(newNode);
+        parent.collapsed = false;
+        layoutTree();
+        render();
+      }
+    }
+
+    // Keyboard Shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (!currentMapId || !selectedNode) return;
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      
+      const node = findNode(tree, selectedNode);
+      if (!node) return;
+      
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        addChild(node.id);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        addSibling(node.id);
+      } else if (e.key === 'Delete') {
+        e.preventDefault();
+        deleteNode(node.id);
+      } else if (e.key === 'F2') {
+        e.preventDefault();
+        openSidebar(node);
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        centerNode(node);
+      } else if (e.ctrlKey && e.key === 'x') {
+        e.preventDefault();
+        cutBranch(node.id);
+      } else if (e.ctrlKey && e.key === 'v') {
+        e.preventDefault();
+        pasteAsChild(node.id);
+      } else if (e.key === 'Escape') {
+        document.getElementById('sidebar').classList.remove('open');
+      }
+    });
+
+    function centerNode(node) {
+      const svg = document.getElementById('svg-canvas');
+      const rect = svg.getBoundingClientRect();
+      
+      panZoom.x = rect.width / 2 - (node.x + node._w / 2) * panZoom.scale;
+      panZoom.y = rect.height / 2 - (node.y + node._h / 2) * panZoom.scale;
+      
+      applyTransform();
+    }
+
+    // Sidebar Events
+    document.getElementById('node-label').addEventListener('input', (e) => {
+      if (!selectedNode) return;
+      const node = findNode(tree, selectedNode);
+      if (node) {
+        node.label = e.target.value;
+        layoutTree();
+        render();
+      }
+    });
+
+    document.getElementById('node-note').addEventListener('input', (e) => {
+      if (!selectedNode) return;
+      const node = findNode(tree, selectedNode);
+      if (node) {
+        node.note = e.target.value;
+      }
+    });
+
+    document.getElementById('node-fontsize').addEventListener('input', (e) => {
+      if (!selectedNode) return;
+      const node = findNode(tree, selectedNode);
+      if (node) {
+        node.fontsize = parseInt(e.target.value) || 14;
+        layoutTree();
+        render();
+      }
+    });
+
+    // Auth
+    document.querySelectorAll('.auth-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.auth-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.auth-form').forEach(f => f.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab + '-form').classList.add('active');
+      });
+    });
+
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (selectedId) addSibling(selectedId);
-      break;
-    case 'Delete':
-    case 'Backspace':
-      if (selectedId) deleteNode(selectedId);
-      break;
-    case 'F2':
-      if (selectedId) openSidebar(selectedId);
-      break;
-    case ' ':
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+      const errorDiv = document.getElementById('login-error');
+      errorDiv.textContent = '';
+      
+      showLoading(true);
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      showLoading(false);
+      
+      if (error) {
+        errorDiv.textContent = error.message;
+        return;
+      }
+      
+      currentUser = data.user;
+      await loadUserProfile();
+      showListView();
+    });
+
+    document.getElementById('register-form').addEventListener('submit', async (e) => {
       e.preventDefault();
+      const email = document.getElementById('register-email').value;
+      const username = document.getElementById('register-username').value;
+      const password = document.getElementById('register-password').value;
+      const passwordConfirm = document.getElementById('register-password-confirm').value;
+      const errorDiv = document.getElementById('register-error');
+      errorDiv.textContent = '';
+      
+      if (password !== passwordConfirm) {
+        errorDiv.textContent = '两次密码输入不一致';
+        return;
+      }
+      
+      showLoading(true);
+      const { data, error } = await supabase.auth.signUp({ email, password });
+      
+      if (error) {
+        showLoading(false);
+        errorDiv.textContent = error.message;
+        return;
+      }
+      
+      const { error: profileError } = await supabase.from('profiles').insert({
+        id: data.user.id,
+        username: username
+      });
+      
+      showLoading(false);
+      
+      if (profileError) {
+        if (profileError.code === '23505') {
+          errorDiv.textContent = '该用户名已被使用';
+          await supabase.auth.signOut();
+        } else {
+          errorDiv.textContent = profileError.message;
+        }
+        return;
+      }
+      
+      currentUser = data.user;
+      await loadUserProfile();
+      showListView();
+    });
+
+    async function loadUserProfile() {
+      const { data } = await supabase.from('profiles').select('username').eq('id', currentUser.id).single();
+      if (data) {
+        document.getElementById('current-username').textContent = data.username;
+      }
+    }
+
+    supabase.auth.onAuthStateChange((event, session) => {
+      if (!session) {
+        currentUser = null;
+        showAuthView();
+      }
+    });
+
+    // Views
+    function showAuthView() {
+      document.getElementById('auth-view').classList.remove('hidden');
+      document.getElementById('list-view').classList.add('hidden');
+      document.getElementById('editor-view').classList.add('hidden');
+    }
+
+    function showListView() {
+      document.getElementById('auth-view').classList.add('hidden');
+      document.getElementById('list-view').classList.remove('hidden');
+      document.getElementById('editor-view').classList.add('hidden');
+      loadMapList();
+    }
+
+    function showEditorView() {
+      document.getElementById('auth-view').classList.add('hidden');
+      document.getElementById('list-view').classList.add('hidden');
+      document.getElementById('editor-view').classList.remove('hidden');
+    }
+
+    // List View
+    async function loadMapList() {
+      const grid = document.getElementById('map-grid');
+      grid.innerHTML = '';
+      
+      // Load owned maps
+      const { data: owned } = await supabase
+        .from('mindmaps')
+        .select('*')
+        .eq('owner_id', currentUser.id)
+        .order('created_at', { ascending: false });
+      
+      // Load shared maps
+      const { data: collabs } = await supabase
+        .from('collaborators')
+        .select('mindmap_id')
+        .eq('user_id', currentUser.id);
+      
+      let shared = [];
+      if (collabs && collabs.length > 0) {
+        const ids = collabs.map(c => c.mindmap_id);
+        const { data } = await supabase
+          .from('mindmaps')
+          .select('*')
+          .in('id', ids)
+          .order('created_at', { ascending: false });
+        shared = data || [];
+      }
+      
+      owned.forEach(map => {
+        grid.appendChild(createMapCard(map, true));
+      });
+      
+      shared.forEach(map => {
+        grid.appendChild(createMapCard(map, false));
+      });
+    }
+
+    function createMapCard(map, isOwner) {
+      const card = document.createElement('div');
+      card.className = 'map-card';
+      
+      const createdDate = new Date(map.created_at).toLocaleString('zh-CN');
+      
+      card.innerHTML = `
+        <div class="map-card-header">
+          <div class="map-card-title">${map.title}</div>
+          <div class="map-card-tag ${isOwner ? '' : 'shared'}">${isOwner ? '我创建的' : '共享给我的'}</div>
+        </div>
+        <div class="map-card-time">${createdDate}</div>
+        <div class="map-card-actions">
+          <button class="btn-edit">进入编辑</button>
+          ${isOwner ? '<button class="btn-delete">删除</button>' : ''}
+        </div>
+      `;
+      
+      card.querySelector('.btn-edit').onclick = () => openMap(map.id);
+      if (isOwner) {
+        card.querySelector('.btn-delete').onclick = async (e) => {
+          e.stopPropagation();
+          if (confirm('确定删除这个导图吗？')) {
+            await supabase.from('mindmaps').delete().eq('id', map.id);
+            loadMapList();
+          }
+        };
+      }
+      
+      return card;
+    }
+
+    document.getElementById('new-map-btn').onclick = async () => {
+      const title = prompt('请输入导图标题', '未命名导图');
+      if (!title) return;
+      
+      const newTree = createNode('中心主题');
+      const { data } = await supabase.from('mindmaps').insert({
+        owner_id: currentUser.id,
+        title: title,
+        tree: JSON.stringify(newTree)
+      }).select().single();
+      
+      if (data) {
+        openMap(data.id);
+      }
+    };
+
+    document.getElementById('logout-btn').onclick = async () => {
+      await supabase.auth.signOut();
+      showAuthView();
+    };
+
+    // Editor View
+    async function openMap(id) {
+      currentMapId = id;
+      showEditorView();
+      await loadData();
+      layoutTree();
+      render();
       fitView();
-      break;
-    case 'Escape':
-      closeSidebar();
-      ctxMenu.style.display = 'none';
-      break;
-    case 'x':
-    case 'X':
-      if (e.ctrlKey || e.metaKey) { e.preventDefault(); if (selectedId) cutBranch(selectedId); }
-      break;
-    case 'v':
-    case 'V':
-      if (e.ctrlKey || e.metaKey) { e.preventDefault(); if (selectedId) pasteBranch(selectedId); }
-      break;
-  }
-});
-
-// ─── 导入功能 ───────────────────────────────
-let importFmt = 'xmind';
-let importFileReady = null;   // 已选择的 File 对象
-let bgLayer = null;           // SVG foreignObject 背景图层
-
-const importModal   = document.getElementById('import-modal');
-const importDropzone= document.getElementById('import-dropzone');
-const importFileInput=document.getElementById('import-file-input');
-const importConfirm = document.getElementById('import-confirm');
-const importCancel  = document.getElementById('import-cancel');
-const bgControl     = document.getElementById('bg-control');
-const bgOpacity     = document.getElementById('bg-opacity');
-
-// 切换格式 tab
-document.querySelectorAll('.import-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.import-tab').forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
-    importFmt = tab.dataset.fmt;
-    importFileReady = null;
-    importConfirm.disabled = true;
-    document.getElementById('drop-hint').textContent = '点击选择文件，或拖拽到此处';
-    const icons = { xmind:'🗂', png:'🖼', pdf:'📄' };
-    importDropzone.querySelector('.drop-icon').textContent = icons[importFmt];
-    const accepts = { xmind: '.xmind', png: 'image/png,image/jpeg,image/webp', pdf: 'application/pdf' };
-    importFileInput.accept = accepts[importFmt];
-    const descs = {
-      xmind: '<strong>XMind 导入：</strong>完整还原思维导图结构，支持继续编辑。支持 .xmind 格式（XMind 8 / ZEN / 2022+）。',
-      png:   '<strong>PNG/图片 导入：</strong>将图片作为背景参考层叠加在画布上，方便对照手动录入节点。',
-      pdf:   '<strong>PDF 导入：</strong>将 PDF 第一页渲染为图片背景，方便参照录入。需要浏览器支持 PDF.js。'
-    };
-    document.getElementById('import-mode-desc').innerHTML = descs[importFmt];
-  });
-});
-
-// 打开弹窗
-document.getElementById('btn-import').addEventListener('click', () => {
-  importModal.classList.add('open');
-});
-importCancel.addEventListener('click', () => {
-  importModal.classList.remove('open');
-  importFileReady = null;
-  importConfirm.disabled = true;
-});
-importModal.addEventListener('click', e => {
-  if (e.target === importModal) importCancel.click();
-});
-
-// 文件选择（点击）
-importDropzone.addEventListener('click', () => importFileInput.click());
-importFileInput.addEventListener('change', () => {
-  if (importFileInput.files[0]) handleFileSelected(importFileInput.files[0]);
-});
-
-// 拖拽
-importDropzone.addEventListener('dragover', e => { e.preventDefault(); importDropzone.classList.add('dragover'); });
-importDropzone.addEventListener('dragleave', () => importDropzone.classList.remove('dragover'));
-importDropzone.addEventListener('drop', e => {
-  e.preventDefault();
-  importDropzone.classList.remove('dragover');
-  if (e.dataTransfer.files[0]) handleFileSelected(e.dataTransfer.files[0]);
-});
-
-function handleFileSelected(file) {
-  importFileReady = file;
-  document.getElementById('drop-hint').textContent = `已选择：${file.name}（${(file.size/1024).toFixed(1)} KB）`;
-  importConfirm.disabled = false;
-}
-
-// 确认导入
-importConfirm.addEventListener('click', async () => {
-  if (!importFileReady) return;
-  importConfirm.textContent = '处理中…';
-  importConfirm.disabled = true;
-  try {
-    if (importFmt === 'xmind') {
-      await importXMind(importFileReady);
-    } else if (importFmt === 'png') {
-      await importImage(importFileReady);
-    } else if (importFmt === 'pdf') {
-      await importPDF(importFileReady);
+      startSyncPolling();
     }
-    importModal.classList.remove('open');
-  } catch(e) {
-    toast('导入失败：' + e.message, 'err', 4000);
-  } finally {
-    importConfirm.textContent = '导入';
-    importConfirm.disabled = false;
-    importFileReady = null;
-  }
-});
 
-// ── XMind 导入（ZIP → content.json）────────────────────────────
-async function importXMind(file) {
-  // 动态加载 JSZip
-  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
-  const buf = await file.arrayBuffer();
-  const zip = await JSZip.loadAsync(buf);
-
-  // XMind 8: content.json  |  XMind ZEN/2022: content.json in root
-  let jsonStr = null;
-  // 尝试各路径
-  for (const path of ['content.json', 'content/content.json']) {
-    const f = zip.file(path);
-    if (f) { jsonStr = await f.async('string'); break; }
-  }
-  // XMind 8 也可能是 content.xml（老格式），暂不支持
-  if (!jsonStr) {
-    // 列出所有文件帮助调试
-    const files = Object.keys(zip.files).join(', ');
-    throw new Error(`未找到 content.json（压缩包内文件：${files.slice(0,200)}）`);
-  }
-
-  const sheets = JSON.parse(jsonStr);
-  // sheets 是数组，取第一个 sheet 的 rootTopic
-  const sheet = Array.isArray(sheets) ? sheets[0] : sheets;
-  const root  = sheet.rootTopic || sheet;
-
-  function convertTopic(t, depth) {
-    const colorIdx = depth % NODE_COLORS.length;
-    const node = {
-      id: uid(),
-      label: (t.title || '节点').slice(0, 30),
-      note: (t.notes && (t.notes.plain?.content || t.notes.realHTML?.content)) || '',
-      color: depth === 0 ? ROOT_COLOR : NODE_COLORS[colorIdx],
-      x: 0, y: 0, collapsed: false,
-      children: []
-    };
-    const children = t.children?.attached || t.children || [];
-    if (Array.isArray(children)) {
-      node.children = children.map(c => convertTopic(c, depth + 1));
+    async function loadData() {
+      const { data } = await supabase.from('mindmaps').select('*').eq('id', currentMapId).single();
+      if (data) {
+        tree = JSON.parse(data.tree);
+        document.getElementById('title-input').value = data.title;
+        lastUpdatedAt = data.updated_at;
+      }
     }
-    return node;
-  }
 
-  tree = convertTopic(root, 0);
-  layoutTree();
-  render();
-  fitView();
-  await saveData(true);
-  toast(`✅ XMind 导入成功！共 ${countNodes(tree)} 个节点`);
-}
+    async function saveData() {
+      const statusEl = document.getElementById('sync-status');
+      statusEl.className = 'sync-status syncing';
+      statusEl.textContent = '同步中...';
+      
+      const title = document.getElementById('title-input').value;
+      const { error } = await supabase.from('mindmaps').update({
+        tree: JSON.stringify(tree),
+        title: title,
+        updated_at: new Date().toISOString()
+      }).eq('id', currentMapId);
+      
+      if (error) {
+        statusEl.className = 'sync-status failed';
+        statusEl.textContent = '同步失败';
+      } else {
+        statusEl.className = 'sync-status synced';
+        statusEl.textContent = '已同步';
+        lastUpdatedAt = new Date().toISOString();
+      }
+    }
 
-function countNodes(n) {
-  return 1 + (n.children||[]).reduce((s,c) => s + countNodes(c), 0);
-}
+    function startSyncPolling() {
+      if (syncTimer) clearInterval(syncTimer);
+      syncTimer = setInterval(async () => {
+        const { data } = await supabase.from('mindmaps').select('updated_at').eq('id', currentMapId).single();
+        if (data && data.updated_at !== lastUpdatedAt) {
+          await loadData();
+          layoutTree();
+          render();
+          showToast('已同步他人更新 🔄');
+        }
+      }, 10000);
+    }
 
-// ── PNG / 图片 导入（作为背景层）───────────────────────────────
-async function importImage(file) {
-  const url = await fileToDataURL(file);
-  setCanvasBackground(url);
-  toast('🖼 图片已作为背景参考层加载');
-}
+    document.getElementById('back-btn').onclick = () => {
+      if (syncTimer) clearInterval(syncTimer);
+      currentMapId = null;
+      tree = null;
+      showListView();
+    };
 
-// ── PDF 导入（第一页渲染为图片背景）────────────────────────────
-async function importPDF(file) {
-  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
-  // 设置 workerSrc
-  if (window.pdfjsLib) {
-    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
-      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-  }
-  toast('PDF 加载中…', 'ok', 8000);
-  const buf = await file.arrayBuffer();
-  const pdf = await window.pdfjsLib.getDocument({data: buf}).promise;
-  const page = await pdf.getPage(1);
-  const viewport = page.getViewport({ scale: 1.5 });
-  const canvas = document.createElement('canvas');
-  canvas.width = viewport.width;
-  canvas.height = viewport.height;
-  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-  const url = canvas.toDataURL('image/png');
-  setCanvasBackground(url);
-  toast(`📄 PDF 第一页已载入为背景（共 ${pdf.numPages} 页）`);
-}
+    document.getElementById('save-btn').onclick = saveData;
 
-// ── 设置 SVG 背景图层 ─────────────────────────────────────────
-function setCanvasBackground(dataUrl) {
-  // 移除旧背景
-  removeBgLayer();
-
-  const img = new Image();
-  img.onload = () => {
-    const svgNS = 'http://www.w3.org/2000/svg';
-    const fo = document.createElementNS(svgNS, 'image');
-    fo.setAttribute('href', dataUrl);
-    fo.setAttribute('x', -img.width / 2);
-    fo.setAttribute('y', -img.height / 2);
-    fo.setAttribute('width', img.width);
-    fo.setAttribute('height', img.height);
-    fo.setAttribute('opacity', '0.4');
-    fo.id = 'bg-image-layer';
-    fo.style.pointerEvents = 'none';
-    // 插入到 linesG 之前（最底层）
-    canvasG.insertBefore(fo, linesG);
-    bgLayer = fo;
-    bgControl.classList.add('visible');
-  };
-  img.src = dataUrl;
-}
-
-function removeBgLayer() {
-  if (bgLayer) { bgLayer.remove(); bgLayer = null; }
-  bgControl.classList.remove('visible');
-}
-
-bgOpacity.addEventListener('input', () => {
-  if (bgLayer) bgLayer.setAttribute('opacity', bgOpacity.value / 100);
-});
-document.getElementById('bg-remove').addEventListener('click', () => {
-  removeBgLayer();
-  toast('背景图层已移除');
-});
-
-// ── 工具函数 ──────────────────────────────────────────────────
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
-    const s = document.createElement('script');
-    s.src = src; s.onload = resolve; s.onerror = reject;
-    document.head.appendChild(s);
-  });
-}
-
-function fileToDataURL(file) {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader();
-    r.onload = e => resolve(e.target.result);
-    r.onerror = reject;
-    r.readAsDataURL(file);
-  });
-}
-
-// ─── 导出 SVG ───────────────────────────────
-function exportSVG() {
-  const svgEl = document.getElementById('canvas');
-  const clone = svgEl.cloneNode(true);
-  const s = new XMLSerializer().serializeToString(clone);
-  const blob = new Blob([s], {type: 'image/svg+xml'});
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = (titleInput.value || 'mindmap') + '.svg';
-  a.click();
-  toast('SVG 已导出');
-}
-
-// ─── 迷你地图 ───────────────────────────────
-function updateMinimap() {
-  const mm = document.getElementById('minimap-svg');
-  mm.innerHTML = '';
-  const svgNS = 'http://www.w3.org/2000/svg';
-  const wrap = canvasWrap.getBoundingClientRect();
-  const scale = 0.12;
-
-  function drawMM(n) {
-    const r = document.createElementNS(svgNS, 'rect');
-    r.setAttribute('x', (n.x - NODE_W/2) * scale + 70);
-    r.setAttribute('y', (n.y - NODE_H/2) * scale + 45);
-    r.setAttribute('width', NODE_W * scale);
-    r.setAttribute('height', NODE_H * scale);
-    r.setAttribute('rx', 2);
-    r.setAttribute('fill', n.color || '#6c63ff');
-    r.setAttribute('opacity', .8);
-    mm.appendChild(r);
-    if (!n.collapsed) for (const c of (n.children||[])) drawMM(c);
-  }
-  drawMM(tree);
-}
-
-// ─── 初始化 ─────────────────────────────────
-async function init() {
-  buildColorPicker();
-  buildFontColorPicker();
-
-  // ── Token 检查：没有则弹窗要求输入 ──
-  await new Promise(resolve => {
-    if (getToken()) { resolve(); return; }
-    const modal = document.getElementById('token-modal');
-    modal.classList.remove('hidden');
-    document.getElementById('token-confirm').addEventListener('click', () => {
-      const t = document.getElementById('token-input').value.trim();
-      if (t) { setToken(t); modal.classList.add('hidden'); resolve(); }
-      else { document.getElementById('token-input').style.borderColor = 'var(--accent2)'; }
+    document.getElementById('title-input').addEventListener('input', () => {
+      saveData();
     });
-    document.getElementById('token-skip').addEventListener('click', () => {
-      modal.classList.add('hidden'); resolve();  // 只读模式，不写 token
-    });
-    document.getElementById('token-input').addEventListener('keydown', e => {
-      if (e.key === 'Enter') document.getElementById('token-confirm').click();
-    });
-  });
 
-  await loadData();
+    // Share
+    document.getElementById('share-btn').onclick = () => {
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.innerHTML = `
+        <div class="modal">
+          <h3>共享设置</h3>
+          <div class="form-group">
+            <label>搜索用户</label>
+            <input type="text" id="share-search" placeholder="输入用户名">
+          </div>
+          <div id="share-search-results"></div>
+          <div class="collaborator-list">
+            <h4>当前协作者</h4>
+            <div id="collaborator-list"></div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">关闭</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      
+      loadCollaborators();
+      
+      document.getElementById('share-search').oninput = async (e) => {
+        const query = e.target.value.trim();
+        if (query.length < 1) {
+          document.getElementById('share-search-results').innerHTML = '';
+          return;
+        }
+        
+        const { data } = await supabase
+          .from('profiles')
+          .select('*')
+          .ilike('username', `%${query}%`)
+          .neq('id', currentUser.id)
+          .limit(10);
+        
+        const results = document.getElementById('share-search-results');
+        results.innerHTML = '';
+        
+        if (data && data.length > 0) {
+          data.forEach(profile => {
+            const div = document.createElement('div');
+            div.className = 'search-result';
+            div.textContent = profile.username;
+            div.onclick = async () => {
+              await supabase.from('collaborators').insert({
+                mindmap_id: currentMapId,
+                user_id: profile.id,
+                can_edit: true
+              });
+              loadCollaborators();
+              results.innerHTML = '';
+              document.getElementById('share-search').value = '';
+            };
+            results.appendChild(div);
+          });
+        }
+      };
+    };
 
-  // 子节点超过 10 个自动折叠（仅首次加载时执行）
-  function autoCollapseLarge(n) {
-    if ((n.children || []).length > 10) n.collapsed = true;
-    (n.children || []).forEach(autoCollapseLarge);
-  }
-  autoCollapseLarge(tree);
+    async function loadCollaborators() {
+      const { data } = await supabase
+        .from('collaborators')
+        .select('*, profiles(username)')
+        .eq('mindmap_id', currentMapId);
+      
+      const list = document.getElementById('collaborator-list');
+      list.innerHTML = '';
+      
+      if (data && data.length > 0) {
+        data.forEach(collab => {
+          const item = document.createElement('div');
+          item.className = 'collaborator-item';
+          item.innerHTML = `
+            <span>${collab.profiles.username}</span>
+            <button class="remove-btn">✕</button>
+          `;
+          item.querySelector('.remove-btn').onclick = async () => {
+            await supabase.from('collaborators').delete().eq('id', collab.id);
+            loadCollaborators();
+          };
+          list.appendChild(item);
+        });
+      }
+    }
 
-  layoutTree();
-  render();
+    // Import/Export
+    document.getElementById('import-btn').onclick = () => {
+      const modal = document.createElement('div');
+      modal.className = 'modal-overlay';
+      modal.innerHTML = `
+        <div class="modal">
+          <h3>导入</h3>
+          <div class="import-tabs">
+            <div class="import-tab active" data-tab="xmind">XMind</div>
+            <div class="import-tab" data-tab="image">PNG/JPG</div>
+            <div class="import-tab" data-tab="json">JSON</div>
+          </div>
+          <div class="import-content active" data-content="xmind">
+            <div class="file-input-wrapper">
+              <input type="file" id="xmind-file" accept=".xmind">
+            </div>
+          </div>
+          <div class="import-content" data-content="image">
+            <div class="file-input-wrapper">
+              <input type="file" id="image-file" accept=".png,.jpg,.jpeg">
+            </div>
+            <div class="form-group">
+              <label>透明度</label>
+              <input type="range" id="image-opacity" min="0" max="1" step="0.1" value="0.5">
+            </div>
+          </div>
+          <div class="import-content" data-content="json">
+            <div class="file-input-wrapper">
+              <input type="file" id="json-file" accept=".json">
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">取消</button>
+            <button class="btn btn-primary" id="import-confirm">导入</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(modal);
+      
+      let activeTab = 'xmind';
+      
+      modal.querySelectorAll('.import-tab').forEach(tab => {
+        tab.onclick = () => {
+          modal.querySelectorAll('.import-tab').forEach(t => t.classList.remove('active'));
+          modal.querySelectorAll('.import-content').forEach(c => c.classList.remove('active'));
+          tab.classList.add('active');
+          activeTab = tab.dataset.tab;
+          modal.querySelector(`[data-content="${activeTab}"]`).classList.add('active');
+        };
+      });
+      
+      document.getElementById('import-confirm').onclick = async () => {
+        if (activeTab === 'xmind') {
+          const file = document.getElementById('xmind-file').files[0];
+          if (file) {
+            const zip = await JSZip.loadAsync(file);
+            const contentFile = zip.file('content.json');
+            if (contentFile) {
+              const content = JSON.parse(await contentFile.async('string'));
+              if (content && content.length > 0) {
+                const xmindTree = convertXmindTree(content[0].rootTopic);
+                tree = xmindTree;
+                document.getElementById('title-input').value = content[0].title || '导入的导图';
+                layoutTree();
+                render();
+                fitView();
+                saveData();
+                modal.remove();
+                showToast('导入成功');
+              }
+            }
+          }
+        } else if (activeTab === 'image') {
+          const file = document.getElementById('image-file').files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              bgImage = {
+                url: e.target.result,
+                x: 0,
+                y: 0,
+                w: 800,
+                h: 600,
+                opacity: parseFloat(document.getElementById('image-opacity').value)
+              };
+              render();
+              modal.remove();
+              showToast('背景已添加');
+            };
+            reader.readAsDataURL(file);
+          }
+        } else if (activeTab === 'json') {
+          const file = document.getElementById('json-file').files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const data = JSON.parse(e.target.result);
+              if (data.tree) {
+                tree = data.tree;
+                document.getElementById('title-input').value = data.title || '导入的导图';
+                layoutTree();
+                render();
+                fitView();
+                saveData();
+                modal.remove();
+                showToast('导入成功');
+              }
+            };
+            reader.readAsText(file);
+          }
+        }
+      };
+    };
 
-  // 初始视图居中
-  const rect = canvasWrap.getBoundingClientRect();
-  transform.x = rect.width / 2;
-  transform.y = rect.height / 2;
-  applyTransform();
+    function convertXmindTree(topic) {
+      const node = createNode(topic.title);
+      if (topic.children && topic.children.attached) {
+        node.children = topic.children.attached.map(convertXmindTree);
+      }
+      return node;
+    }
 
-  loading.classList.add('hidden');
-  setTimeout(() => loading.remove(), 500);
+    document.getElementById('export-svg-btn').onclick = () => {
+      const svg = document.getElementById('svg-canvas');
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const blob = new Blob([svgData], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'mindmap.svg';
+      a.click();
+      URL.revokeObjectURL(url);
+    };
 
-  // 轮询同步（15s 一次）
-  syncInterval = setInterval(async () => {
-    await pollSync();
-    await pollPresence();
-  }, 15000);
+    document.getElementById('export-json-btn').onclick = () => {
+      const data = {
+        title: document.getElementById('title-input').value,
+        tree: tree
+      };
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'mindmap.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    };
 
-  // Presence 推送（10s 一次）
-  await pushPresence();
-  setInterval(pushPresence, 10000);
-}
+    // Auto-collapse if >10 children
+    function autoCollapse() {
+      function check(node) {
+        if (node.children.length > 10) {
+          node.collapsed = true;
+        }
+        node.children.forEach(check);
+      }
+      check(tree);
+    }
 
-init();
-</script>
+    // Init
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        currentUser = session.user;
+        await loadUserProfile();
+        showListView();
+      } else {
+        showAuthView();
+      }
+    })();
+  </script>
 </body>
 </html>
