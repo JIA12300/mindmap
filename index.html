@@ -1,0 +1,1794 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>协作思维导图</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  :root {
+    --bg: #f0f2f8;
+    --surface: #ffffff;
+    --surface2: #f5f6fa;
+    --border: #dde1f0;
+    --accent: #6c63ff;
+    --accent2: #ff6584;
+    --text: #1a1d2e;
+    --text2: #6b7499;
+    --success: #2da872;
+    --warn: #f59e0b;
+    --node-colors: #6c63ff, #ff6584, #4caf87, #ffb74d, #42a5f5, #ef5350, #ab47bc, #26c6da;
+  }
+
+  body {
+    font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* ── 顶栏 ── */
+  #topbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+    flex-shrink: 0;
+  }
+  #topbar h1 {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: .5px;
+  }
+  #title-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 14px;
+    padding: 5px 10px;
+    outline: none;
+    max-width: 300px;
+  }
+  #title-input:focus { border-color: var(--accent); }
+
+  .spacer { flex: 1; }
+
+  #sync-status {
+    font-size: 12px;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  #sync-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--success);
+    transition: background .3s;
+  }
+  #sync-dot.syncing { background: var(--warn); animation: pulse .8s infinite; }
+  #sync-dot.error { background: var(--accent2); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .btn {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { opacity: .85; }
+  .btn.danger:hover { border-color: var(--accent2); color: var(--accent2); }
+
+  /* ── 工具栏 ── */
+  #toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text2);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .tool-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-right: 12px;
+    border-right: 1px solid var(--border);
+  }
+  .tool-group:last-child { border-right: none; }
+  .tool-label { color: var(--text2); font-size: 11px; }
+  
+  kbd {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 11px;
+    color: var(--text2);
+  }
+
+  /* ── 画布 ── */
+  #canvas-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+  }
+  #canvas-wrap.grabbing { cursor: grabbing; }
+  
+  svg#canvas {
+    width: 100%; height: 100%;
+    position: absolute; top: 0; left: 0;
+  }
+
+  /* ── SVG 节点样式 ── */
+  .node-group { cursor: pointer; }
+  .node-rect {
+    rx: 10; ry: 10;
+    filter: drop-shadow(0 2px 8px rgba(0,0,0,.4));
+    transition: filter .15s;
+  }
+  .node-group:hover .node-rect { filter: drop-shadow(0 4px 16px rgba(108,99,255,.4)); }
+  .node-group.selected .node-rect { stroke-width: 2.5 !important; }
+  .node-text {
+    fill: #fff;
+    font-size: 13px;
+    font-family: 'PingFang SC','Microsoft YaHei',sans-serif;
+    pointer-events: none;
+  }
+  .node-text.root-text { font-size: 15px; font-weight: 700; }
+  
+  .conn-line {
+    fill: none;
+    stroke-width: 2;
+    opacity: .45;
+  }
+  
+  /* ── 侧栏（节点编辑） ── */
+  #sidebar {
+    position: absolute;
+    right: 0; top: 0;
+    width: 260px;
+    height: 100%;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    transform: translateX(100%);
+    transition: transform .2s ease;
+    z-index: 50;
+  }
+  #sidebar.open { transform: translateX(0); }
+  #sidebar h2 { font-size: 13px; color: var(--text2); font-weight: 600; }
+  
+  .field-label { font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+  .field-input, .field-textarea {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-size: 13px;
+    padding: 7px 10px;
+    outline: none;
+    font-family: inherit;
+    resize: vertical;
+  }
+  .field-input:focus, .field-textarea:focus { border-color: var(--accent); }
+  .field-textarea { min-height: 80px; }
+
+  .color-row {
+    display: flex; gap: 7px; flex-wrap: wrap;
+  }
+  .color-dot {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform .12s;
+  }
+  .color-dot:hover { transform: scale(1.2); }
+  .color-dot.active { border-color: #fff; }
+
+  /* ── 协作者列表 ── */
+  #collab-bar {
+    position: absolute;
+    bottom: 16px; left: 16px;
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    z-index: 50;
+  }
+  .collab-avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: #fff;
+    border: 2px solid var(--bg);
+    title: attr(title);
+  }
+
+  /* ── Toast ── */
+  #toast-container {
+    position: absolute;
+    top: 80px; right: 16px;
+    display: flex; flex-direction: column; gap: 8px;
+    z-index: 200;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    animation: toastIn .2s ease;
+    max-width: 240px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.12);
+  }
+  .toast.ok { border-color: var(--success); color: var(--success); }
+  .toast.err { border-color: var(--accent2); color: var(--accent2); }
+  @keyframes toastIn { from{opacity:0;transform:translateX(20px)} to{opacity:1;transform:none} }
+
+  /* ── 加载遮罩 ── */
+  #loading {
+    position: absolute; inset: 0;
+    background: var(--bg);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 16px;
+    z-index: 999;
+    transition: opacity .4s;
+  }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading p { color: var(--text2); font-size: 14px; }
+
+  /* ── 右键菜单 ── */
+  #ctx-menu {
+    position: absolute;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px;
+    min-width: 150px;
+    z-index: 200;
+    display: none;
+    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+  }
+  .ctx-item {
+    padding: 7px 12px;
+    border-radius: 5px;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .ctx-item:hover { background: var(--surface2); }
+  .ctx-item.danger:hover { color: var(--accent2); }
+  .ctx-sep { height: 1px; background: var(--border); margin: 3px 0; }
+
+  /* ── 导入弹窗 ── */
+  #import-modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.65);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 500;
+    display: none;
+  }
+  #import-modal.open { display: flex; }
+  #import-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 32px;
+    width: 440px;
+    max-width: 96vw;
+    display: flex; flex-direction: column; gap: 18px;
+    box-shadow: 0 16px 48px rgba(0,0,0,.5);
+  }
+  #import-box h2 { font-size: 15px; font-weight: 700; }
+  #import-box p { font-size: 12px; color: var(--text2); line-height: 1.6; }
+  .import-tabs {
+    display: flex; gap: 6px;
+  }
+  .import-tab {
+    flex: 1; padding: 7px 0;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--surface2);
+    color: var(--text2);
+    font-size: 13px; cursor: pointer; text-align: center;
+    transition: all .15s;
+  }
+  .import-tab.active { border-color: var(--accent); color: var(--accent); background: rgba(108,99,255,.12); }
+  .import-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 28px 16px;
+    text-align: center;
+    color: var(--text2);
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .import-dropzone:hover, .import-dropzone.dragover {
+    border-color: var(--accent);
+    background: rgba(108,99,255,.06);
+    color: var(--accent);
+  }
+  .import-dropzone .drop-icon { font-size: 32px; margin-bottom: 10px; }
+  .import-mode-desc {
+    font-size: 11px; color: var(--text2);
+    background: var(--surface2);
+    border-radius: 6px; padding: 8px 10px;
+    line-height: 1.6;
+  }
+  .import-actions { display: flex; gap: 10px; justify-content: flex-end; }
+  /* 背景图层控制条 */
+  #bg-control {
+    position: absolute;
+    top: 8px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 5px 12px;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text2);
+    z-index: 80;
+    box-shadow: 0 4px 16px rgba(0,0,0,.3);
+  }
+  #bg-control.visible { display: flex; }
+  #bg-opacity { width: 80px; accent-color: var(--accent); }
+
+  .collapse-btn circle { transition: fill .15s; }
+  .collapse-btn:hover circle { fill: var(--accent) !important; }
+
+  /* ── Token 设置弹窗 ── */
+  #token-modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.55);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 9999;
+  }
+  #token-modal.hidden { display: none; }
+  .modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px 32px;
+    max-width: 420px; width: 90%;
+    box-shadow: 0 16px 48px rgba(0,0,0,.3);
+  }
+  .modal-box h2 { font-size: 16px; margin-bottom: 8px; }
+  .modal-box p  { font-size: 13px; color: var(--text2); margin-bottom: 18px; line-height: 1.6; }
+  .modal-box a  { color: var(--accent); }
+  .modal-input {
+    width: 100%; padding: 8px 12px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 7px; color: var(--text); font-size: 13px;
+    outline: none; margin-bottom: 14px;
+  }
+  .modal-input:focus { border-color: var(--accent); }
+
+  /* ── 迷你地图 ── */
+  #minimap {
+    position: absolute;
+    bottom: 16px; right: 16px;
+    width: 140px; height: 90px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    opacity: .8;
+  }
+  #minimap svg { width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+
+<!-- 顶栏 -->
+<div id="topbar">
+  <h1>🧠 MindMap</h1>
+  <input id="title-input" type="text" placeholder="导图标题…" value="我的思维导图" />
+  <div class="spacer"></div>
+  <div id="sync-status">
+    <div id="sync-dot"></div>
+    <span id="sync-label">已同步</span>
+  </div>
+  <button class="btn" id="btn-import">📥 导入</button>
+  <button class="btn" id="btn-share" title="复制当前页面链接">🔗 分享</button>
+  <button class="btn" id="btn-export">⬇ 导出</button>
+  <button class="btn primary" id="btn-save">💾 保存</button>
+</div>
+
+<!-- 工具栏 -->
+<div id="toolbar">
+  <div class="tool-group">
+    <span class="tool-label">新增</span>
+    <button class="btn" id="btn-add-child">➕ 子节点</button>
+    <button class="btn" id="btn-add-sibling">↔ 同级</button>
+  </div>
+  <div class="tool-group">
+    <span class="tool-label">操作</span>
+    <button class="btn danger" id="btn-delete">🗑 删除</button>
+    <button class="btn" id="btn-collapse">折叠 / 展开</button>
+  </div>
+  <div class="tool-group">
+    <span class="tool-label">视图</span>
+    <button class="btn" id="btn-fit">居中</button>
+    <button class="btn" id="btn-zoom-in">＋</button>
+    <button class="btn" id="btn-zoom-out">－</button>
+  </div>
+  <div class="tool-group">
+    <kbd>Tab</kbd> 子节点
+    <kbd>Enter</kbd> 同级
+    <kbd>Del</kbd> 删除
+    <kbd>F2</kbd> 编辑
+    <kbd>空格</kbd> 居中
+  </div>
+</div>
+
+<!-- 主画布 -->
+<div id="canvas-wrap">
+  <svg id="canvas">
+    <defs>
+      <marker id="arrow" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+        <path d="M0,0 L6,3 L0,6 Z" fill="none"/>
+      </marker>
+    </defs>
+    <g id="canvas-g">
+      <g id="lines-g"></g>
+      <g id="nodes-g"></g>
+    </g>
+  </svg>
+
+  <!-- 侧栏 -->
+  <div id="sidebar">
+    <h2>✏️ 节点属性</h2>
+    <div>
+      <div class="field-label">标签</div>
+      <input id="node-label" class="field-input" type="text" placeholder="节点文字…"/>
+    </div>
+    <div>
+      <div class="field-label">备注</div>
+      <textarea id="node-note" class="field-textarea" placeholder="备注信息…"></textarea>
+    </div>
+    <div style="display:flex;gap:10px;align-items:flex-end">
+      <div style="flex:1">
+        <div class="field-label">字号</div>
+        <input id="node-fontsize" class="field-input" type="number" min="10" max="32" value="13" style="width:100%"/>
+      </div>
+      <div style="flex:1">
+        <div class="field-label">字色</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap" id="font-color-picker"></div>
+      </div>
+    </div>
+    <div>
+      <div class="field-label">背景色</div>
+      <div class="color-row" id="color-picker"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:auto;">
+      <button class="btn primary" id="sidebar-save" style="flex:1">应用</button>
+      <button class="btn" id="sidebar-close">关闭</button>
+    </div>
+  </div>
+
+  <!-- 协作者 -->
+  <div id="collab-bar"></div>
+
+  <!-- 迷你地图 -->
+  <div id="minimap"><svg id="minimap-svg"></svg></div>
+
+  <!-- 右键菜单 -->
+  <div id="ctx-menu">
+    <div class="ctx-item" id="ctx-add-child">➕ 添加子节点</div>
+    <div class="ctx-item" id="ctx-add-sibling">↔ 添加同级节点</div>
+    <div class="ctx-item" id="ctx-edit">✏️ 编辑</div>
+    <div class="ctx-item" id="ctx-collapse">📦 折叠 / 展开</div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item" id="ctx-cut">✂️ 剪切分支 <kbd style="margin-left:auto;font-size:10px">⌘X</kbd></div>
+    <div class="ctx-item" id="ctx-paste">📋 粘贴为子节点 <kbd style="margin-left:auto;font-size:10px">⌘V</kbd></div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-item danger" id="ctx-delete">🗑 删除节点</div>
+  </div>
+
+  <!-- 导入弹窗 -->
+  <div id="import-modal">
+    <div id="import-box">
+      <h2>📥 导入文件</h2>
+      <div class="import-tabs">
+        <div class="import-tab active" data-fmt="xmind">🗂 XMind</div>
+        <div class="import-tab" data-fmt="png">🖼 PNG 图片</div>
+        <div class="import-tab" data-fmt="pdf">📄 PDF</div>
+      </div>
+      <div class="import-dropzone" id="import-dropzone">
+        <div class="drop-icon">🗂</div>
+        <div id="drop-hint">点击选择文件，或拖拽到此处</div>
+        <input type="file" id="import-file-input" style="display:none" accept=".xmind">
+      </div>
+      <div class="import-mode-desc" id="import-mode-desc">
+        <strong>XMind 导入：</strong>完整还原思维导图结构，支持继续编辑。支持 .xmind 格式（XMind 8 / ZEN / 2022+）。
+      </div>
+      <div class="import-actions">
+        <button class="btn" id="import-cancel">取消</button>
+        <button class="btn primary" id="import-confirm" disabled>导入</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 背景图层控制条 -->
+  <div id="bg-control">
+    <span>📌 背景参考图</span>
+    <label>透明度
+      <input type="range" id="bg-opacity" min="0" max="100" value="40">
+    </label>
+    <button class="btn" id="bg-remove" style="padding:3px 8px;font-size:11px">移除</button>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast-container"></div>
+
+  <!-- Token 设置弹窗 -->
+  <div id="token-modal" class="hidden">
+    <div class="modal-box">
+      <h2>🔑 输入访问 Token</h2>
+      <p>
+        首次使用需要输入 GitHub Token，用于读写共享数据。<br>
+        Token 只保存在你的浏览器本地，不会上传到任何服务器。<br><br>
+        没有 Token？请联系导图创建者获取，或前往
+        <a href="https://github.com/settings/tokens/new" target="_blank">GitHub → Settings → Tokens</a>
+        创建一个勾选了 <b>gist</b> 权限的 Token。
+      </p>
+      <input id="token-input" class="modal-input" type="password" placeholder="ghp_xxxxxxxxxxxxxxxx" />
+      <div style="display:flex;gap:10px;">
+        <button class="btn primary" id="token-confirm" style="flex:1">确认并进入</button>
+        <button class="btn" id="token-skip">跳过（只读模式）</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading">
+    <div class="spinner"></div>
+    <p>正在加载数据…</p>
+  </div>
+</div>
+
+<script>
+/* ════════════════════════════════════════════
+   协作思维导图 — 完整逻辑
+   ════════════════════════════════════════════ */
+
+// ─── 颜色集 ─────────────────────────────────
+const NODE_COLORS = [
+  '#6c63ff','#ff6584','#4caf87','#ffb74d',
+  '#42a5f5','#ef5350','#ab47bc','#26c6da',
+  '#78909c','#f06292'
+];
+const ROOT_COLOR = '#6c63ff';
+
+// ─── 状态 ───────────────────────────────────
+let tree = null;            // {id, label, note, color, x, y, collapsed, children:[]}
+let selectedId = null;
+let transform = { x: 0, y: 0, scale: 1 };
+let isDragging = false;
+let dragStart = null;
+let dragNodeId = null;     // 正在拖动的节点 id
+let lastSyncHash = '';
+let syncInterval = null;
+let localUser = `用户_${Math.random().toString(36).slice(2,6)}`;
+let collabPresence = {};   // {userId: {name, ts}}
+const NODE_W = 120, NODE_H = 38;
+
+// ─── DOM ────────────────────────────────────
+const canvasWrap = document.getElementById('canvas-wrap');
+const canvasG    = document.getElementById('canvas-g');
+const linesG     = document.getElementById('lines-g');
+const nodesG     = document.getElementById('nodes-g');
+const sidebar    = document.getElementById('sidebar');
+const ctxMenu    = document.getElementById('ctx-menu');
+const loading    = document.getElementById('loading');
+const syncDot    = document.getElementById('sync-dot');
+const syncLabel  = document.getElementById('sync-label');
+const titleInput = document.getElementById('title-input');
+
+// ─── 工具函数 ────────────────────────────────
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function toast(msg, type='ok', dur=2500) {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), dur);
+}
+function hash(obj) { return JSON.stringify(obj); }
+
+// ─── 初始树 ─────────────────────────────────
+function defaultTree() {
+  return {
+    id: uid(), label: '中心主题', note: '', color: ROOT_COLOR,
+    x: 0, y: 0, collapsed: false,
+    children: [
+      { id: uid(), label: '分支一', note: '', color: NODE_COLORS[1], x: 220, y: -90, collapsed: false, children: [] },
+      { id: uid(), label: '分支二', note: '', color: NODE_COLORS[2], x: 220, y:  0,  collapsed: false, children: [] },
+      { id: uid(), label: '分支三', note: '', color: NODE_COLORS[3], x: 220, y:  90, collapsed: false, children: [] },
+    ]
+  };
+}
+
+// ─── GitHub Gist 数据层 ────────────────────────
+const GIST_ID  = '1223d26e1dcb2e19baa80c2c0ea47246';
+const GIST_API = `https://api.github.com/gists/${GIST_ID}`;
+// Token 存在 localStorage，不硬编码在源码中（GitHub 会拒绝含 token 的推送）
+function getToken() { return localStorage.getItem('mindmap_gist_token') || ''; }
+function setToken(t) { localStorage.setItem('mindmap_gist_token', t); }
+
+async function gistGet() {
+  const r = await fetch(GIST_API, {
+    headers: { Authorization: `token ${getToken()}`, Accept: 'application/vnd.github+json' }
+  });
+  if (!r.ok) throw new Error(`Gist GET failed: ${r.status}`);
+  const j = await r.json();
+  const raw = j.files['mindmap_data.json']?.content || '{}';
+  return JSON.parse(raw);
+}
+
+async function gistPatch(data) {
+  const r = await fetch(GIST_API, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `token ${getToken()}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      files: { 'mindmap_data.json': { content: JSON.stringify(data) } }
+    })
+  });
+  if (!r.ok) throw new Error(`Gist PATCH failed: ${r.status}`);
+}
+
+async function loadData() {
+  try {
+    const data = await gistGet();
+    tree = data.tree || defaultTree();
+    if (data.title) titleInput.value = data.title;
+    lastSyncHash = hash(tree);
+  } catch(e) {
+    console.error(e);
+    tree = defaultTree();
+    toast('加载数据失败，使用本地默认', 'err');
+  }
+}
+
+async function saveData(silent=false) {
+  setSyncState('syncing');
+  try {
+    await gistPatch({ tree, title: titleInput.value, ts: Date.now() });
+    lastSyncHash = hash(tree);
+    setSyncState('ok');
+    if (!silent) toast('已保存 ✓');
+  } catch(e) {
+    setSyncState('error');
+    toast('保存失败：' + e.message, 'err');
+  }
+}
+
+async function pollSync() {
+  try {
+    const data = await gistGet();
+    const remote = data.tree;
+    if (!remote) return;
+    const remoteHash = hash(remote);
+    if (remoteHash !== lastSyncHash) {
+      tree = remote;
+      lastSyncHash = remoteHash;
+      if (data.title) titleInput.value = data.title;
+      layoutTree();
+      render();
+      toast('已同步他人更新 🔄', 'ok', 1800);
+    }
+  } catch(e) { /* 静默 */ }
+}
+
+// ─── 在线状态（presence，存入 Gist 同一文件）──────────────────────
+async function pushPresence() {
+  try {
+    const data = await gistGet();
+    if (!data.presence) data.presence = {};
+    data.presence[localUser] = { name: localUser, ts: Date.now() };
+    await gistPatch(data);
+  } catch(e) {}
+}
+
+async function pollPresence() {
+  try {
+    const data = await gistGet();
+    const now = Date.now();
+    const active = {};
+    Object.entries(data.presence || {}).forEach(([k, u]) => {
+      if (now - u.ts < 30000) active[k] = u;
+    });
+    collabPresence = active;
+    renderCollabBar();
+  } catch(e) {}
+}
+
+function renderCollabBar() {
+  const bar = document.getElementById('collab-bar');
+  bar.innerHTML = '';
+  const users = Object.values(collabPresence);
+  users.slice(0, 8).forEach(u => {
+    const av = document.createElement('div');
+    av.className = 'collab-avatar';
+    av.title = u.name;
+    av.textContent = u.name.slice(-2);
+    av.style.background = stringColor(u.name);
+    bar.appendChild(av);
+  });
+  if (users.length > 0) {
+    const lbl = document.createElement('span');
+    lbl.style.cssText = 'font-size:11px;color:var(--text2)';
+    lbl.textContent = `${users.length} 人在线`;
+    bar.appendChild(lbl);
+  }
+}
+
+function stringColor(s) {
+  let h = 0;
+  for (let c of s) h = (h * 31 + c.charCodeAt(0)) % NODE_COLORS.length;
+  return NODE_COLORS[h];
+}
+
+function setSyncState(state) {
+  syncDot.className = state === 'ok' ? '' : state;
+  syncLabel.textContent = state === 'ok' ? '已同步' : state === 'syncing' ? '同步中…' : '同步失败';
+}
+
+// ─── 树操作 ─────────────────────────────────
+function findNode(id, node=tree) {
+  if (!node) return null;
+  if (node.id === id) return node;
+  for (const c of (node.children||[])) {
+    const r = findNode(id, c);
+    if (r) return r;
+  }
+  return null;
+}
+
+function findParent(id, node=tree, parent=null) {
+  if (node.id === id) return parent;
+  for (const c of (node.children||[])) {
+    const r = findParent(id, c, node);
+    if (r !== undefined) return r;
+  }
+  return undefined;
+}
+
+function addChild(parentId) {
+  const parent = findNode(parentId);
+  if (!parent) return;
+  const colors = NODE_COLORS;
+  const color = colors[(parent.children||[]).length % colors.length];
+  const child = { id: uid(), label: '新节点', note: '', color, x: 0, y: 0, collapsed: false, children: [] };
+  if (!parent.children) parent.children = [];
+  parent.children.push(child);
+  layoutTree();
+  render();
+  selectedId = child.id;
+  openSidebar(child.id);
+}
+
+function addSibling(nodeId) {
+  if (nodeId === tree.id) { toast('根节点无法添加同级', 'err'); return; }
+  const parent = findParent(nodeId);
+  if (!parent) return;
+  const idx = parent.children.findIndex(c => c.id === nodeId);
+  const color = NODE_COLORS[(idx + 1) % NODE_COLORS.length];
+  const sib = { id: uid(), label: '新节点', note: '', color, x: 0, y: 0, collapsed: false, children: [] };
+  parent.children.splice(idx + 1, 0, sib);
+  layoutTree();
+  render();
+  selectedId = sib.id;
+  openSidebar(sib.id);
+}
+
+function deleteNode(nodeId) {
+  if (nodeId === tree.id) { toast('不能删除根节点', 'err'); return; }
+  const parent = findParent(nodeId);
+  if (!parent) return;
+  parent.children = parent.children.filter(c => c.id !== nodeId);
+  selectedId = null;
+  closeSidebar();
+  layoutTree();
+  render();
+}
+
+function toggleCollapse(nodeId) {
+  const n = findNode(nodeId);
+  if (!n) return;
+  n.collapsed = !n.collapsed;
+  layoutTree();
+  render();
+}
+
+// ─── 布局 ──────────────────────────────────
+const GAP_Y = 20;  // 节点间垂直间隙
+
+// 估算节点渲染高度（布局阶段用，getBBox 在 render 阶段才能用）
+function estimateNodeH(n) {
+  if (n._manualH) return n._manualH;
+  if (n._h) return n._h;  // 已渲染过则用真实值
+  const fontSize = n.fontSize || 13;
+  const PAD_X = 20, PAD_Y = 12;
+  const maxLineW = (n._manualW || 280) - PAD_X * 2;
+  const charW = fontSize * 0.9;  // 中文字符宽度≈字号
+  const charsPerLine = Math.max(1, Math.floor(maxLineW / charW));
+  const lineCount = Math.ceil(n.label.length / charsPerLine) || 1;
+  const lineH = fontSize * 1.5;
+  return lineCount * lineH + PAD_Y * 2;
+}
+
+function estimateNodeW(n) {
+  if (n._manualW) return n._manualW;
+  if (n._w) return n._w;
+  const fontSize = n.fontSize || 13;
+  return Math.min(320, Math.max(90, n.label.length * fontSize * 0.9 + 40));
+}
+
+function nodeSlotH(n) { return estimateNodeH(n) + GAP_Y; }
+function nodeW(n) { return estimateNodeW(n); }
+
+function layoutTree() {
+  const SEP_X = 240;
+
+  function calcTotalH(n) {
+    if (!n || n.collapsed || !n.children || n.children.length === 0) return nodeSlotH(n);
+    return n.children.reduce((s, c) => s + calcTotalH(c), 0);
+  }
+
+  function layout(n, depth, yStart) {
+    n.x = depth * SEP_X;
+    if (!n.children || n.children.length === 0 || n.collapsed) {
+      n.y = yStart + nodeSlotH(n) / 2;
+      return yStart + nodeSlotH(n);
+    }
+    let y = yStart;
+    for (const c of n.children) {
+      y = layout(c, depth + 1, y);
+    }
+    n.y = (yStart + y) / 2;
+    return y;
+  }
+
+  const totalH = calcTotalH(tree);
+  layout(tree, 0, -totalH / 2);
+}
+
+// ─── 渲染 SVG ───────────────────────────────
+function render() {
+  linesG.innerHTML = '';
+  nodesG.innerHTML = '';
+  const svgNS = 'http://www.w3.org/2000/svg';
+
+  function renderNode(n, parentNode) {
+    // 连线
+    if (parentNode) {
+      const line = document.createElementNS(svgNS, 'path');
+      const x1 = parentNode.x + (parentNode._w||120)/2, y1 = parentNode.y;
+      const x2 = n.x - (n._w||120)/2,                    y2 = n.y;
+      const mx = (x1 + x2) / 2;
+      line.setAttribute('d', `M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`);
+      line.setAttribute('class', 'conn-line');
+      line.setAttribute('stroke', n.color || NODE_COLORS[0]);
+      linesG.appendChild(line);
+    }
+
+    // 节点组
+    const g = document.createElementNS(svgNS, 'g');
+    g.setAttribute('class', 'node-group' + (selectedId === n.id ? ' selected' : ''));
+    g.setAttribute('transform', `translate(${n.x - (n._w||120)/2},${n.y - (n._h||38)/2})`);
+    g.dataset.id = n.id;
+
+    // 背景矩形
+    // 先用占位尺寸，文字渲染后会覆盖（SVG 无法预知尺寸，用估算值）
+    const _nw = n._w || 120, _nh = n._h || 38;
+    const rect = document.createElementNS(svgNS, 'rect');
+    rect.setAttribute('class', 'node-rect');
+    rect.setAttribute('width', _nw);
+    rect.setAttribute('height', _nh);
+    rect.setAttribute('rx', 10);
+    rect.setAttribute('fill', n.color || NODE_COLORS[0]);
+    rect.setAttribute('stroke', selectedId === n.id ? '#fff' : 'transparent');
+    rect.setAttribute('stroke-width', '2.5');
+    g.appendChild(rect);
+
+    // 折叠指示器（可点击）
+    if (n.children && n.children.length > 0) {
+      const collapseBtn = document.createElementNS(svgNS, 'g');
+      collapseBtn.setAttribute('class', 'collapse-btn');
+      collapseBtn.style.cursor = 'pointer';
+
+      const ci = document.createElementNS(svgNS, 'circle');
+      ci.setAttribute('cx', (n._w || 120));
+      ci.setAttribute('cy', (n._h || 38) / 2);
+      ci.setAttribute('r', 9);
+      ci.setAttribute('fill', 'rgba(0,0,0,.5)');
+      collapseBtn.appendChild(ci);
+
+      const ct = document.createElementNS(svgNS, 'text');
+      ct.setAttribute('x', (n._w || 120));
+      ct.setAttribute('y', (n._h || 38) / 2 + 4);
+      ct.setAttribute('text-anchor', 'middle');
+      ct.setAttribute('fill', '#fff');
+      ct.setAttribute('font-size', '12');
+      ct.setAttribute('font-weight', 'bold');
+      ct.setAttribute('pointer-events', 'none');
+      ct.textContent = n.collapsed ? '+' : '−';
+      collapseBtn.appendChild(ct);
+
+      // 关键：单独绑定点击，阻止冒泡避免触发 selectNode
+      collapseBtn.addEventListener('click', e => {
+        e.stopPropagation();
+        toggleCollapse(n.id);
+      });
+      collapseBtn.addEventListener('mousedown', e => e.stopPropagation()); // 阻止触发拖动
+      g.appendChild(collapseBtn);
+    }
+
+    // ── 文字渲染（先挂载到 DOM，再用 getBBox 获取真实尺寸）──
+    const fontSize  = n.fontSize  || (n === tree ? 15 : 13);
+    const fontColor = n.fontColor || '#ffffff';
+    const PAD_X = 20, PAD_Y = 12;
+    const MAX_LINE_W = (n._manualW || 280) - PAD_X * 2;  // 用户手动调宽时尊重
+
+    // 先把文字加入 nodesG（需要在 SVG 中才能 getBBox）
+    // 用单行 text 先测量每个字的真实宽度，再软换行
+    const probe = document.createElementNS(svgNS, 'text');
+    probe.setAttribute('font-size', fontSize);
+    probe.setAttribute('font-family', "PingFang SC,Microsoft YaHei,sans-serif");
+    probe.setAttribute('visibility', 'hidden');
+    probe.textContent = n.label;
+    nodesG.appendChild(probe);
+    let probeW = 0;
+    try { probeW = probe.getBBox().width; } catch(e) { probeW = n.label.length * fontSize * 0.7; }
+    nodesG.removeChild(probe);
+
+    // 按真实宽度软换行（逐字累加）
+    const LINE_H = fontSize * 1.5;
+    const lines = [];
+    let curLine = '';
+    let curW = 0;
+    const charW = probeW / (n.label.length || 1);
+    for (const ch of n.label) {
+      const cw = charW;
+      if (curW + cw > MAX_LINE_W && curLine) {
+        lines.push(curLine); curLine = ch; curW = cw;
+      } else {
+        curLine += ch; curW += cw;
+      }
+    }
+    if (curLine) lines.push(curLine);
+    if (!lines.length) lines.push('');
+
+    // 估算节点宽高（用于占位矩形，getBBox 后再修正）
+    const estW = n._manualW || Math.min(320, Math.max(90, probeW + PAD_X * 2));
+    const estH = n._manualH || (lines.length * LINE_H + PAD_Y * 2);
+
+    // 更新缓存
+    n._w = estW; n._h = estH;
+
+    // 文字元素（多行 tspan）
+    const txt = document.createElementNS(svgNS, 'text');
+    txt.setAttribute('class', 'node-text' + (n === tree ? ' root-text' : ''));
+    txt.setAttribute('x', estW / 2);
+    txt.setAttribute('y', PAD_Y + fontSize);
+    txt.setAttribute('text-anchor', 'middle');
+    txt.setAttribute('font-size', fontSize);
+    txt.setAttribute('font-family', "PingFang SC,Microsoft YaHei,sans-serif");
+    txt.setAttribute('fill', fontColor);
+    txt.setAttribute('pointer-events', 'none');
+    lines.forEach((line, i) => {
+      const tspan = document.createElementNS(svgNS, 'tspan');
+      tspan.setAttribute('x', estW / 2);
+      tspan.setAttribute('dy', i === 0 ? 0 : LINE_H);
+      tspan.textContent = line;
+      txt.appendChild(tspan);
+    });
+    g.appendChild(txt);
+
+    // ── getBBox 修正矩形真实尺寸 ──────────────────────────────────────
+    nodesG.appendChild(g);  // 需要先在 DOM 里才能 getBBox
+    let realW = estW, realH = estH;
+    try {
+      const bb = txt.getBBox();
+      realW = n._manualW || Math.max(90, bb.width  + PAD_X * 2);
+      realH = n._manualH || Math.max(32, bb.height + PAD_Y * 2);
+    } catch(e) {}
+    n._w = realW; n._h = realH;
+
+    // 回填矩形和文字 x 坐标
+    rect.setAttribute('width',  realW);
+    rect.setAttribute('height', realH);
+    txt.setAttribute('x', realW / 2);
+    txt.querySelectorAll('tspan').forEach(ts => ts.setAttribute('x', realW / 2));
+    g.setAttribute('transform', `translate(${n.x - realW/2},${n.y - realH/2})`);
+
+    // 折叠按钮位置修正（此时已知真实尺寸）
+    const cbg = g.querySelector('.collapse-btn');
+    if (cbg) {
+      const cCircle = cbg.querySelector('circle');
+      const cText   = cbg.querySelector('text');
+      if (cCircle) { cCircle.setAttribute('cx', realW); cCircle.setAttribute('cy', realH / 2); }
+      if (cText)   { cText.setAttribute('x', realW);   cText.setAttribute('y', realH / 2 + 4); }
+    }
+
+    // 备注小点
+    if (n.note) {
+      const nd = document.createElementNS(svgNS, 'circle');
+      nd.setAttribute('cx', realW - 6);
+      nd.setAttribute('cy', 6);
+      nd.setAttribute('r', 4);
+      nd.setAttribute('fill', '#ffb74d');
+      g.appendChild(nd);
+    }
+
+    // 拖拽调整大小手柄（右下角）
+    const resizeHandle = document.createElementNS(svgNS, 'g');
+    resizeHandle.setAttribute('class', 'resize-handle');
+    resizeHandle.style.cursor = 'nwse-resize';
+    const rr = document.createElementNS(svgNS, 'rect');
+    rr.setAttribute('x', realW - 12); rr.setAttribute('y', realH - 12);
+    rr.setAttribute('width', 12); rr.setAttribute('height', 12);
+    rr.setAttribute('rx', 3);
+    rr.setAttribute('fill', 'rgba(255,255,255,0.25)');
+    resizeHandle.appendChild(rr);
+    const rl = document.createElementNS(svgNS, 'text');
+    rl.setAttribute('x', realW - 6); rl.setAttribute('y', realH - 2);
+    rl.setAttribute('text-anchor', 'middle');
+    rl.setAttribute('font-size', '8');
+    rl.setAttribute('fill', 'rgba(255,255,255,0.6)');
+    rl.setAttribute('pointer-events', 'none');
+    rl.textContent = '⤡';
+    resizeHandle.appendChild(rl);
+
+    // 拖拽手柄事件
+    resizeHandle.addEventListener('mousedown', e => {
+      e.stopPropagation();
+      const startX = e.clientX, startY = e.clientY;
+      const startW = realW, startH = realH;
+      function onMove(ev) {
+        const dw = (ev.clientX - startX) / transform.scale;
+        const dh = (ev.clientY - startY) / transform.scale;
+        n._manualW = Math.max(60, startW + dw);
+        n._manualH = Math.max(28, startH + dh);
+        n._w = n._manualW; n._h = n._manualH;
+        render();
+      }
+      function onUp() {
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        saveData(true);
+      }
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+    resizeHandle.addEventListener('click', e => e.stopPropagation());
+    g.appendChild(resizeHandle);
+
+    // 事件
+    g.addEventListener('click', e => { e.stopPropagation(); selectNode(n.id); });
+    g.addEventListener('dblclick', e => { e.stopPropagation(); openSidebar(n.id); });
+    g.addEventListener('contextmenu', e => { e.preventDefault(); e.stopPropagation(); showCtxMenu(e, n.id); });
+
+    // 拖动节点（整个分支跟随）
+    let dragO = null;
+    g.addEventListener('mousedown', e => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      dragNodeId = n.id;
+      // 收集当前节点 + 所有子孙节点的初始坐标快照
+      const snapshot = {};
+      function snap(node) {
+        snapshot[node.id] = { x: node.x, y: node.y };
+        (node.children || []).forEach(snap);
+      }
+      snap(n);
+      dragO = { mx: e.clientX, my: e.clientY, snapshot };
+    });
+    window.addEventListener('mousemove', ev => {
+      if (dragNodeId !== n.id || !dragO) return;
+      const dx = (ev.clientX - dragO.mx) / transform.scale;
+      const dy = (ev.clientY - dragO.my) / transform.scale;
+      // 整个分支整体偏移
+      function moveSubtree(node) {
+        const orig = dragO.snapshot[node.id];
+        if (orig) { node.x = orig.x + dx; node.y = orig.y + dy; }
+        (node.children || []).forEach(moveSubtree);
+      }
+      moveSubtree(n);
+      render();
+    });
+    window.addEventListener('mouseup', () => {
+      if (dragNodeId === n.id) {
+        dragNodeId = null;
+        dragO = null;
+        render();
+      }
+    });
+
+    // 子节点
+    if (!n.collapsed) {
+      for (const c of (n.children || [])) renderNode(c, n);
+    }
+  }
+
+  renderNode(tree, null);
+  updateMinimap();
+
+  // ── 尺寸收敛：若真实高度与布局估算差距 >10px，触发一次重新布局 ──
+  if (!render._converging) {
+    let needRelayout = false;
+    function checkConverge(n) {
+      const est = estimateNodeH(n);
+      const real = n._h || est;
+      if (Math.abs(real - est) > 10) needRelayout = true;
+      if (!n.collapsed) (n.children || []).forEach(checkConverge);
+    }
+    checkConverge(tree);
+    if (needRelayout) {
+      render._converging = true;
+      requestAnimationFrame(() => {
+        layoutTree();
+        render();
+        render._converging = false;
+      });
+    }
+  }
+}
+
+function renderFast() { render(); }
+
+// ─── 选中 ───────────────────────────────────
+function selectNode(id) {
+  selectedId = id;
+  render();
+  // 更新侧栏（如果已打开）
+  if (sidebar.classList.contains('open')) {
+    const n = findNode(id);
+    if (n) {
+      document.getElementById('node-label').value = n.label;
+      document.getElementById('node-note').value = n.note || '';
+      document.getElementById('node-fontsize').value = n.fontSize || 13;
+      updateColorPicker(n.color);
+      updateFontColorPicker(n.fontColor || '#ffffff');
+    }
+  }
+}
+
+// ─── 侧栏 ───────────────────────────────────
+function openSidebar(id) {
+  selectedId = id;
+  const n = findNode(id);
+  if (!n) return;
+  document.getElementById('node-label').value = n.label;
+  document.getElementById('node-note').value = n.note || '';
+  document.getElementById('node-fontsize').value = n.fontSize || (n === tree ? 15 : 13);
+  updateColorPicker(n.color);
+  updateFontColorPicker(n.fontColor || '#ffffff');
+  sidebar.classList.add('open');
+  document.getElementById('node-label').focus();
+  render();
+}
+function closeSidebar() { sidebar.classList.remove('open'); }
+
+const FONT_COLORS = ['#ffffff','#1a1d2e','#6c63ff','#ff6584','#2da872','#f59e0b','#42a5f5','#ef5350'];
+
+function buildColorPicker() {
+  const row = document.getElementById('color-picker');
+  NODE_COLORS.forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'color-dot';
+    d.style.background = c;
+    d.dataset.color = c;
+    d.dataset.group = 'bg';
+    d.addEventListener('click', () => {
+      document.querySelectorAll('.color-dot[data-group="bg"]').forEach(x => x.classList.remove('active'));
+      d.classList.add('active');
+    });
+    row.appendChild(d);
+  });
+}
+function buildFontColorPicker() {
+  const row = document.getElementById('font-color-picker');
+  if (!row) return;
+  FONT_COLORS.forEach(c => {
+    const d = document.createElement('div');
+    d.className = 'color-dot';
+    d.dataset.color = c;
+    d.dataset.group = 'font';
+    d.style.background = c;
+    d.style.border = '2px solid #dde1f0';
+    d.addEventListener('click', () => {
+      document.querySelectorAll('.color-dot[data-group="font"]').forEach(x => x.classList.remove('active'));
+      d.classList.add('active');
+    });
+    row.appendChild(d);
+  });
+}
+function updateColorPicker(color) {
+  document.querySelectorAll('.color-dot[data-group="bg"]').forEach(d => {
+    d.classList.toggle('active', d.dataset.color === color);
+  });
+}
+function updateFontColorPicker(color) {
+  document.querySelectorAll('.color-dot[data-group="font"]').forEach(d => {
+    d.classList.toggle('active', d.dataset.color === color);
+  });
+}
+function getPickedColor() {
+  const a = document.querySelector('.color-dot[data-group="bg"].active');
+  return a ? a.dataset.color : NODE_COLORS[0];
+}
+function getPickedFontColor() {
+  const a = document.querySelector('.color-dot[data-group="font"].active');
+  return a ? a.dataset.color : '#ffffff';
+}
+
+document.getElementById('sidebar-save').addEventListener('click', () => {
+  if (!selectedId) return;
+  const n = findNode(selectedId);
+  if (!n) return;
+  n.label     = document.getElementById('node-label').value.trim() || n.label;
+  n.note      = document.getElementById('node-note').value.trim();
+  n.color     = getPickedColor();
+  n.fontSize  = parseInt(document.getElementById('node-fontsize').value) || 13;
+  n.fontColor = getPickedFontColor();
+  // 字体改变时清除手动尺寸缓存，让 getBBox 重新计算
+  n._w = null; n._h = null; n._manualW = null; n._manualH = null;
+  render();
+  closeSidebar();
+  saveData(true);
+});
+document.getElementById('sidebar-close').addEventListener('click', closeSidebar);
+
+// ─── 右键菜单 ───────────────────────────────
+// ─── 剪贴板 ───────────────────────────────────
+let clipboard = null;
+
+function deepClone(node) { return JSON.parse(JSON.stringify(node)); }
+
+function regenIds(node) {
+  node.id = uid();
+  (node.children || []).forEach(regenIds);
+  return node;
+}
+
+function cutBranch(nodeId) {
+  if (nodeId === tree.id) { toast('根节点不能剪切', 'err'); return; }
+  const node = findNode(nodeId);
+  if (!node) return;
+  clipboard = deepClone(node);
+  deleteNode(nodeId);
+  updatePasteItem();
+  const cnt = countNodes(clipboard);
+  toast('✂️ 已剪切「' + clipboard.label + '」及 ' + cnt + ' 个节点');
+}
+
+function pasteBranch(targetId) {
+  if (!clipboard) { toast('剪贴板为空，请先剪切一个分支', 'err'); return; }
+  const target = findNode(targetId);
+  if (!target) return;
+  const newBranch = regenIds(deepClone(clipboard));
+  if (!target.children) target.children = [];
+  target.children.push(newBranch);
+  layoutTree();
+  render();
+  saveData(true);
+  toast('📋 已将「' + newBranch.label + '」粘贴到「' + target.label + '」');
+}
+
+function updatePasteItem() {
+  const pasteEl = document.getElementById('ctx-paste');
+  if (!pasteEl) return;
+  pasteEl.style.opacity = clipboard ? '1' : '0.4';
+  pasteEl.style.pointerEvents = clipboard ? 'auto' : 'none';
+}
+
+let ctxNodeId = null;
+function showCtxMenu(e, nodeId) {
+  ctxNodeId = nodeId;
+  selectedId = nodeId;
+  render();
+  updatePasteItem();
+  ctxMenu.style.display = 'block';
+  ctxMenu.style.left = e.clientX + 'px';
+  ctxMenu.style.top  = e.clientY + 'px';
+}
+document.addEventListener('click', () => { ctxMenu.style.display = 'none'; });
+document.getElementById('ctx-add-child').addEventListener('click', () => addChild(ctxNodeId));
+document.getElementById('ctx-add-sibling').addEventListener('click', () => addSibling(ctxNodeId));
+document.getElementById('ctx-edit').addEventListener('click', () => openSidebar(ctxNodeId));
+document.getElementById('ctx-collapse').addEventListener('click', () => { toggleCollapse(ctxNodeId); render(); });
+document.getElementById('ctx-delete').addEventListener('click', () => deleteNode(ctxNodeId));
+document.getElementById('ctx-cut').addEventListener('click', () => cutBranch(ctxNodeId));
+document.getElementById('ctx-paste').addEventListener('click', () => pasteBranch(ctxNodeId));
+
+// ─── 画布平移 & 缩放 ─────────────────────────
+let panStart = null;
+canvasWrap.addEventListener('mousedown', e => {
+  if (e.button === 1 || (e.button === 0 && !e.target.closest('.node-group'))) {
+    panStart = { mx: e.clientX, my: e.clientY, tx: transform.x, ty: transform.y };
+    canvasWrap.classList.add('grabbing');
+  }
+});
+window.addEventListener('mousemove', e => {
+  if (!panStart || dragNodeId) return;
+  transform.x = panStart.tx + (e.clientX - panStart.mx);
+  transform.y = panStart.ty + (e.clientY - panStart.my);
+  applyTransform();
+});
+window.addEventListener('mouseup', () => { panStart = null; canvasWrap.classList.remove('grabbing'); });
+
+canvasWrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  if (e.ctrlKey) {
+    // 双指捏合 / Ctrl+滚轮 → 缩放
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const rect = canvasWrap.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    transform.x = mx - (mx - transform.x) * delta;
+    transform.y = my - (my - transform.y) * delta;
+    transform.scale = Math.min(3, Math.max(0.2, transform.scale * delta));
+  } else {
+    // 双指滑动 / 普通滚轮 → 平移
+    transform.x -= e.deltaX;
+    transform.y -= e.deltaY;
+  }
+  applyTransform();
+}, { passive: false });
+
+function applyTransform() {
+  canvasG.setAttribute('transform',
+    `translate(${transform.x},${transform.y}) scale(${transform.scale})`);
+  updateMinimap();
+}
+
+function fitView() {
+  const rect = canvasWrap.getBoundingClientRect();
+  transform.scale = 1;
+  transform.x = rect.width / 2;
+  transform.y = rect.height / 2;
+  applyTransform();
+}
+
+// ─── 按钮 ───────────────────────────────────
+document.getElementById('btn-add-child').addEventListener('click', () => {
+  if (selectedId) addChild(selectedId); else toast('请先选择一个节点');
+});
+document.getElementById('btn-add-sibling').addEventListener('click', () => {
+  if (selectedId) addSibling(selectedId); else toast('请先选择一个节点');
+});
+document.getElementById('btn-delete').addEventListener('click', () => {
+  if (selectedId) deleteNode(selectedId); else toast('请先选择一个节点');
+});
+document.getElementById('btn-collapse').addEventListener('click', () => {
+  if (selectedId) { toggleCollapse(selectedId); render(); } else toast('请先选择一个节点');
+});
+document.getElementById('btn-fit').addEventListener('click', fitView);
+document.getElementById('btn-zoom-in').addEventListener('click', () => {
+  transform.scale = Math.min(3, transform.scale * 1.2); applyTransform();
+});
+document.getElementById('btn-zoom-out').addEventListener('click', () => {
+  transform.scale = Math.max(0.2, transform.scale * 0.8); applyTransform();
+});
+document.getElementById('btn-save').addEventListener('click', () => saveData());
+document.getElementById('btn-share').addEventListener('click', () => {
+  navigator.clipboard.writeText(location.href).then(() => toast('链接已复制 ✓')).catch(() => toast('复制失败，请手动复制链接', 'err'));
+});
+document.getElementById('btn-export').addEventListener('click', exportSVG);
+titleInput.addEventListener('change', () => saveData(true));
+
+// ─── 键盘快捷键 ─────────────────────────────
+document.addEventListener('keydown', e => {
+  if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) return;
+  switch(e.key) {
+    case 'Tab':
+      e.preventDefault();
+      if (selectedId) addChild(selectedId);
+      break;
+    case 'Enter':
+      e.preventDefault();
+      if (selectedId) addSibling(selectedId);
+      break;
+    case 'Delete':
+    case 'Backspace':
+      if (selectedId) deleteNode(selectedId);
+      break;
+    case 'F2':
+      if (selectedId) openSidebar(selectedId);
+      break;
+    case ' ':
+      e.preventDefault();
+      fitView();
+      break;
+    case 'Escape':
+      closeSidebar();
+      ctxMenu.style.display = 'none';
+      break;
+    case 'x':
+    case 'X':
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); if (selectedId) cutBranch(selectedId); }
+      break;
+    case 'v':
+    case 'V':
+      if (e.ctrlKey || e.metaKey) { e.preventDefault(); if (selectedId) pasteBranch(selectedId); }
+      break;
+  }
+});
+
+// ─── 导入功能 ───────────────────────────────
+let importFmt = 'xmind';
+let importFileReady = null;   // 已选择的 File 对象
+let bgLayer = null;           // SVG foreignObject 背景图层
+
+const importModal   = document.getElementById('import-modal');
+const importDropzone= document.getElementById('import-dropzone');
+const importFileInput=document.getElementById('import-file-input');
+const importConfirm = document.getElementById('import-confirm');
+const importCancel  = document.getElementById('import-cancel');
+const bgControl     = document.getElementById('bg-control');
+const bgOpacity     = document.getElementById('bg-opacity');
+
+// 切换格式 tab
+document.querySelectorAll('.import-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.import-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    importFmt = tab.dataset.fmt;
+    importFileReady = null;
+    importConfirm.disabled = true;
+    document.getElementById('drop-hint').textContent = '点击选择文件，或拖拽到此处';
+    const icons = { xmind:'🗂', png:'🖼', pdf:'📄' };
+    importDropzone.querySelector('.drop-icon').textContent = icons[importFmt];
+    const accepts = { xmind: '.xmind', png: 'image/png,image/jpeg,image/webp', pdf: 'application/pdf' };
+    importFileInput.accept = accepts[importFmt];
+    const descs = {
+      xmind: '<strong>XMind 导入：</strong>完整还原思维导图结构，支持继续编辑。支持 .xmind 格式（XMind 8 / ZEN / 2022+）。',
+      png:   '<strong>PNG/图片 导入：</strong>将图片作为背景参考层叠加在画布上，方便对照手动录入节点。',
+      pdf:   '<strong>PDF 导入：</strong>将 PDF 第一页渲染为图片背景，方便参照录入。需要浏览器支持 PDF.js。'
+    };
+    document.getElementById('import-mode-desc').innerHTML = descs[importFmt];
+  });
+});
+
+// 打开弹窗
+document.getElementById('btn-import').addEventListener('click', () => {
+  importModal.classList.add('open');
+});
+importCancel.addEventListener('click', () => {
+  importModal.classList.remove('open');
+  importFileReady = null;
+  importConfirm.disabled = true;
+});
+importModal.addEventListener('click', e => {
+  if (e.target === importModal) importCancel.click();
+});
+
+// 文件选择（点击）
+importDropzone.addEventListener('click', () => importFileInput.click());
+importFileInput.addEventListener('change', () => {
+  if (importFileInput.files[0]) handleFileSelected(importFileInput.files[0]);
+});
+
+// 拖拽
+importDropzone.addEventListener('dragover', e => { e.preventDefault(); importDropzone.classList.add('dragover'); });
+importDropzone.addEventListener('dragleave', () => importDropzone.classList.remove('dragover'));
+importDropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  importDropzone.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) handleFileSelected(e.dataTransfer.files[0]);
+});
+
+function handleFileSelected(file) {
+  importFileReady = file;
+  document.getElementById('drop-hint').textContent = `已选择：${file.name}（${(file.size/1024).toFixed(1)} KB）`;
+  importConfirm.disabled = false;
+}
+
+// 确认导入
+importConfirm.addEventListener('click', async () => {
+  if (!importFileReady) return;
+  importConfirm.textContent = '处理中…';
+  importConfirm.disabled = true;
+  try {
+    if (importFmt === 'xmind') {
+      await importXMind(importFileReady);
+    } else if (importFmt === 'png') {
+      await importImage(importFileReady);
+    } else if (importFmt === 'pdf') {
+      await importPDF(importFileReady);
+    }
+    importModal.classList.remove('open');
+  } catch(e) {
+    toast('导入失败：' + e.message, 'err', 4000);
+  } finally {
+    importConfirm.textContent = '导入';
+    importConfirm.disabled = false;
+    importFileReady = null;
+  }
+});
+
+// ── XMind 导入（ZIP → content.json）────────────────────────────
+async function importXMind(file) {
+  // 动态加载 JSZip
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js');
+  const buf = await file.arrayBuffer();
+  const zip = await JSZip.loadAsync(buf);
+
+  // XMind 8: content.json  |  XMind ZEN/2022: content.json in root
+  let jsonStr = null;
+  // 尝试各路径
+  for (const path of ['content.json', 'content/content.json']) {
+    const f = zip.file(path);
+    if (f) { jsonStr = await f.async('string'); break; }
+  }
+  // XMind 8 也可能是 content.xml（老格式），暂不支持
+  if (!jsonStr) {
+    // 列出所有文件帮助调试
+    const files = Object.keys(zip.files).join(', ');
+    throw new Error(`未找到 content.json（压缩包内文件：${files.slice(0,200)}）`);
+  }
+
+  const sheets = JSON.parse(jsonStr);
+  // sheets 是数组，取第一个 sheet 的 rootTopic
+  const sheet = Array.isArray(sheets) ? sheets[0] : sheets;
+  const root  = sheet.rootTopic || sheet;
+
+  function convertTopic(t, depth) {
+    const colorIdx = depth % NODE_COLORS.length;
+    const node = {
+      id: uid(),
+      label: (t.title || '节点').slice(0, 30),
+      note: (t.notes && (t.notes.plain?.content || t.notes.realHTML?.content)) || '',
+      color: depth === 0 ? ROOT_COLOR : NODE_COLORS[colorIdx],
+      x: 0, y: 0, collapsed: false,
+      children: []
+    };
+    const children = t.children?.attached || t.children || [];
+    if (Array.isArray(children)) {
+      node.children = children.map(c => convertTopic(c, depth + 1));
+    }
+    return node;
+  }
+
+  tree = convertTopic(root, 0);
+  layoutTree();
+  render();
+  fitView();
+  await saveData(true);
+  toast(`✅ XMind 导入成功！共 ${countNodes(tree)} 个节点`);
+}
+
+function countNodes(n) {
+  return 1 + (n.children||[]).reduce((s,c) => s + countNodes(c), 0);
+}
+
+// ── PNG / 图片 导入（作为背景层）───────────────────────────────
+async function importImage(file) {
+  const url = await fileToDataURL(file);
+  setCanvasBackground(url);
+  toast('🖼 图片已作为背景参考层加载');
+}
+
+// ── PDF 导入（第一页渲染为图片背景）────────────────────────────
+async function importPDF(file) {
+  await loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+  // 设置 workerSrc
+  if (window.pdfjsLib) {
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+  toast('PDF 加载中…', 'ok', 8000);
+  const buf = await file.arrayBuffer();
+  const pdf = await window.pdfjsLib.getDocument({data: buf}).promise;
+  const page = await pdf.getPage(1);
+  const viewport = page.getViewport({ scale: 1.5 });
+  const canvas = document.createElement('canvas');
+  canvas.width = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  const url = canvas.toDataURL('image/png');
+  setCanvasBackground(url);
+  toast(`📄 PDF 第一页已载入为背景（共 ${pdf.numPages} 页）`);
+}
+
+// ── 设置 SVG 背景图层 ─────────────────────────────────────────
+function setCanvasBackground(dataUrl) {
+  // 移除旧背景
+  removeBgLayer();
+
+  const img = new Image();
+  img.onload = () => {
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const fo = document.createElementNS(svgNS, 'image');
+    fo.setAttribute('href', dataUrl);
+    fo.setAttribute('x', -img.width / 2);
+    fo.setAttribute('y', -img.height / 2);
+    fo.setAttribute('width', img.width);
+    fo.setAttribute('height', img.height);
+    fo.setAttribute('opacity', '0.4');
+    fo.id = 'bg-image-layer';
+    fo.style.pointerEvents = 'none';
+    // 插入到 linesG 之前（最底层）
+    canvasG.insertBefore(fo, linesG);
+    bgLayer = fo;
+    bgControl.classList.add('visible');
+  };
+  img.src = dataUrl;
+}
+
+function removeBgLayer() {
+  if (bgLayer) { bgLayer.remove(); bgLayer = null; }
+  bgControl.classList.remove('visible');
+}
+
+bgOpacity.addEventListener('input', () => {
+  if (bgLayer) bgLayer.setAttribute('opacity', bgOpacity.value / 100);
+});
+document.getElementById('bg-remove').addEventListener('click', () => {
+  removeBgLayer();
+  toast('背景图层已移除');
+});
+
+// ── 工具函数 ──────────────────────────────────────────────────
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = src; s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+}
+
+function fileToDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = e => resolve(e.target.result);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+// ─── 导出 SVG ───────────────────────────────
+function exportSVG() {
+  const svgEl = document.getElementById('canvas');
+  const clone = svgEl.cloneNode(true);
+  const s = new XMLSerializer().serializeToString(clone);
+  const blob = new Blob([s], {type: 'image/svg+xml'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (titleInput.value || 'mindmap') + '.svg';
+  a.click();
+  toast('SVG 已导出');
+}
+
+// ─── 迷你地图 ───────────────────────────────
+function updateMinimap() {
+  const mm = document.getElementById('minimap-svg');
+  mm.innerHTML = '';
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const wrap = canvasWrap.getBoundingClientRect();
+  const scale = 0.12;
+
+  function drawMM(n) {
+    const r = document.createElementNS(svgNS, 'rect');
+    r.setAttribute('x', (n.x - NODE_W/2) * scale + 70);
+    r.setAttribute('y', (n.y - NODE_H/2) * scale + 45);
+    r.setAttribute('width', NODE_W * scale);
+    r.setAttribute('height', NODE_H * scale);
+    r.setAttribute('rx', 2);
+    r.setAttribute('fill', n.color || '#6c63ff');
+    r.setAttribute('opacity', .8);
+    mm.appendChild(r);
+    if (!n.collapsed) for (const c of (n.children||[])) drawMM(c);
+  }
+  drawMM(tree);
+}
+
+// ─── 初始化 ─────────────────────────────────
+async function init() {
+  buildColorPicker();
+  buildFontColorPicker();
+
+  // ── Token 检查：没有则弹窗要求输入 ──
+  await new Promise(resolve => {
+    if (getToken()) { resolve(); return; }
+    const modal = document.getElementById('token-modal');
+    modal.classList.remove('hidden');
+    document.getElementById('token-confirm').addEventListener('click', () => {
+      const t = document.getElementById('token-input').value.trim();
+      if (t) { setToken(t); modal.classList.add('hidden'); resolve(); }
+      else { document.getElementById('token-input').style.borderColor = 'var(--accent2)'; }
+    });
+    document.getElementById('token-skip').addEventListener('click', () => {
+      modal.classList.add('hidden'); resolve();  // 只读模式，不写 token
+    });
+    document.getElementById('token-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('token-confirm').click();
+    });
+  });
+
+  await loadData();
+
+  // 子节点超过 10 个自动折叠（仅首次加载时执行）
+  function autoCollapseLarge(n) {
+    if ((n.children || []).length > 10) n.collapsed = true;
+    (n.children || []).forEach(autoCollapseLarge);
+  }
+  autoCollapseLarge(tree);
+
+  layoutTree();
+  render();
+
+  // 初始视图居中
+  const rect = canvasWrap.getBoundingClientRect();
+  transform.x = rect.width / 2;
+  transform.y = rect.height / 2;
+  applyTransform();
+
+  loading.classList.add('hidden');
+  setTimeout(() => loading.remove(), 500);
+
+  // 轮询同步（15s 一次）
+  syncInterval = setInterval(async () => {
+    await pollSync();
+    await pollPresence();
+  }, 15000);
+
+  // Presence 推送（10s 一次）
+  await pushPresence();
+  setInterval(pushPresence, 10000);
+}
+
+init();
+</script>
+</body>
+</html>
