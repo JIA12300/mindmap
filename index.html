@@ -1042,8 +1042,13 @@ function stopPoll() {
 }
 
 // ─── Auth ────────────────────────────────────────────────────────────────────
-sb.auth.onAuthStateChange((event, session) => {
-  if (!session) {
+sb.auth.onAuthStateChange(async (event, session) => {
+  if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+    currentUser = session.user;
+    await loadProfile();
+    showView('v-list');
+    loadMapList();
+  } else if (!session) {
     currentUser = null;
     currentProfile = null;
     stopPoll();
@@ -1147,6 +1152,7 @@ document.getElementById('do-new-map').onclick = async () => {
 };
 
 async function loadMapList() {
+  if (!currentUser) { showView('v-auth'); return; }
   const grid = document.getElementById('cards');
   grid.innerHTML = '<div style="color:#6b7499;font-size:14px">加载中…</div>';
   
