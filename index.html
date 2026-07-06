@@ -1132,12 +1132,15 @@ document.getElementById('do-new-map').onclick = async () => {
   if (!title) return;
   showSpinner();
 
-  // 确保 profiles 里有当前用户记录（upsert，防止外键约束失败）
-  const { error: profileErr } = await sb.from('profiles').upsert({
-    id: currentUser.id,
-    username: currentUserProfile?.username || currentUser.email.split('@')[0]
-  }, { onConflict: 'id' });
-  if (profileErr) { hideSpinner(); toast('用户信息同步失败: ' + profileErr.message); return; }
+  // 确保 profiles 里有当前用户记录
+  const { data: existingProfile } = await sb.from('profiles').select('id').eq('id', currentUser.id).single();
+  if (!existingProfile) {
+    const { error: profileErr } = await sb.from('profiles').insert({
+      id: currentUser.id,
+      username: currentUserProfile?.username || currentUser.email.split('@')[0]
+    });
+    if (profileErr && profileErr.code !== '23505') { hideSpinner(); toast('用户信息同步失败: ' + profileErr.message); return; }
+  }
 
   const root = makeNode('中心主题', 0);
   root._w = 120; root._h = 40;
